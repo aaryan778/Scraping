@@ -1,0 +1,83 @@
+{
+  "IT": {
+    "Frontend": [
+      "Frontend Developer",
+      "React Developer",
+      "Vue.js Developer",
+      "Angular Developer",
+      "UI Developer",
+      "UX Engineer",
+      "Web Developer",
+      "JavaScript Developer",
+      "TypeScript Developer",
+      "Mobile Developer",
+      "iOS Developer",
+      "Android Developer",
+      "React Native Developer",
+      "Flutter Developer"
+    ],
+    "Backend": [
+      "Backend Developer",
+      "Python Developer",
+      "Java Developer",
+      "Node.js Developer",
+      ".NET Developer",
+      "Go Developer",
+      "Ruby Developer",
+      "PHP Developer",
+      "Scala Developer",
+      "C++ Developer",
+      "DevOps Engineer",
+      "Site Reliability Engineer",
+      "Cloud Engineer",
+      "Database Administrator",
+      "API Developer"
+    ],
+    "Full Stack": [
+      "Full Stack Developer",
+      "Software Engineer",
+      "Software Developer",
+      "Application Developer",
+      "Solutions Architect",
+      "Technical Lead",
+      "Engineering Manager"
+    ],
+    "Specialized": [
+      "Data Engineer",
+      "Machine Learning Engineer",
+      "AI Engineer",
+      "Security Engineer",
+      "Blockchain Developer",
+      "Game Developer",
+      "Embedded Systems Engineer",
+      "QA Engineer",
+      "Test Automation Engineer"
+    ]
+  },
+  "Healthcare": {
+    "Healthcare IT": [
+      "Healthcare Software Engineer",
+      "Medical Informatics Specialist",
+      "EHR Developer",
+      "EMR Developer",
+      "FHIR Developer",
+      "HL7 Developer",
+      "Clinical Systems Engineer",
+      "Healthcare Data Engineer",
+      "Medical Device Software Engineer",
+      "Telehealth Developer",
+      "Healthcare Cloud Engineer",
+      "PACS Developer",
+      "Radiology IT Specialist"
+    ],
+    "Healthcare Data": [
+      "Healthcare Data Analyst",
+      "Clinical Data Analyst",
+      "Health Information Manager",
+      "Healthcare Business Intelligence Developer",
+      "Medical Data Scientist",
+      "Population Health Analyst",
+      "Healthcare Analytics Engineer"
+    ]
+  }
+}

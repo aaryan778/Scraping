@@ -1,0 +1,37 @@
+{
+  "countries": [
+    {
+      "name": "United States",
+      "code": "US",
+      "google_jobs_location": "United States",
+      "major_cities": [
+        "San Francisco", "New York", "Seattle", "Austin", "Boston",
+        "Los Angeles", "Chicago", "Denver", "Atlanta", "Washington DC"
+      ]
+    },
+    {
+      "name": "Canada",
+      "code": "CA",
+      "google_jobs_location": "Canada",
+      "major_cities": [
+        "Toronto", "Vancouver", "Montreal", "Calgary", "Ottawa", "Edmonton"
+      ]
+    },
+    {
+      "name": "India",
+      "code": "IN",
+      "google_jobs_location": "India",
+      "major_cities": [
+        "Bangalore", "Mumbai", "Delhi", "Hyderabad", "Pune", "Chennai", "Kolkata"
+      ]
+    },
+    {
+      "name": "Australia",
+      "code": "AU",
+      "google_jobs_location": "Australia",
+      "major_cities": [
+        "Sydney", "Melbourne", "Brisbane", "Perth", "Adelaide", "Canberra"
+      ]
+    }
+  ]
+}

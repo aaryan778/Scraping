@@ -1,0 +1,38 @@
+# Core Dependencies
+python-dotenv==1.0.0
+requests==2.31.0
+pandas==2.1.4
+openpyxl==3.1.2
+
+# Web Scraping
+selenium==4.16.0
+webdriver-manager==4.0.1
+beautifulsoup4==4.12.2
+lxml==5.0.0
+
+# NLP & AI
+spacy==3.7.2
+transformers==4.36.2
+torch==2.1.2
+
+# Database
+sqlalchemy==2.0.23
+alembic==1.13.1
+
+# API
+fastapi==0.108.0
+uvicorn==0.25.0
+pydantic==2.5.3
+
+# Dashboard
+streamlit==1.29.0
+plotly==5.18.0
+altair==5.2.0
+
+# Scheduling
+apscheduler==3.10.4
+
+# Utilities
+python-dateutil==2.8.2
+pytz==2023.3
+tqdm==4.66.1
