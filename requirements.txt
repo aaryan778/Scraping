@@ -4,35 +4,54 @@ requests==2.31.0
 pandas==2.1.4
 openpyxl==3.1.2
 
-# Web Scraping
-selenium==4.16.0
-webdriver-manager==4.0.1
+# Web Scraping (Playwright instead of Selenium)
+playwright==1.40.0
 beautifulsoup4==4.12.2
 lxml==5.0.0
+fake-useragent==1.4.0
 
 # NLP & AI
 spacy==3.7.2
-transformers==4.36.2
-torch==2.1.2
 
-# Database
+# Fuzzy Matching & Deduplication
+fuzzywuzzy==0.18.0
+python-Levenshtein==0.23.0
+rapidfuzz==3.5.2
+
+# Database (PostgreSQL)
 sqlalchemy==2.0.23
+psycopg2-binary==2.9.9
 alembic==1.13.1
+
+# Caching (Redis)
+redis==5.0.1
+hiredis==2.3.2
 
 # API
 fastapi==0.108.0
-uvicorn==0.25.0
+uvicorn[standard]==0.25.0
 pydantic==2.5.3
+pydantic-settings==2.1.0
 
 # Dashboard
 streamlit==1.29.0
+streamlit-authenticator==0.2.3
 plotly==5.18.0
 altair==5.2.0
 
-# Scheduling
+# Scheduling & Task Queue
 apscheduler==3.10.4
+
+# Monitoring & Notifications
+loguru==0.7.2
 
 # Utilities
 python-dateutil==2.8.2
 pytz==2023.3
 tqdm==4.66.1
+tenacity==8.2.3
+
+# Development
+pytest==7.4.3
+black==23.12.1
+flake8==7.0.0
