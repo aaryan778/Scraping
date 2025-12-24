@@ -1,12 +1,16 @@
 """
 Automated Job Scraping Scheduler
 Runs the scraper every hour to keep job data fresh
+
+Phase 5: Added job status checker to scheduled tasks
 """
 import logging
 import time
+import os
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.cron import CronTrigger
 import sys
 from pathlib import Path
 
@@ -15,16 +19,16 @@ sys.path.append(str(Path(__file__).parent))
 
 from scrapers.job_scraper_main import JobScraperOrchestrator
 from models.database import init_db
+from utils.job_status_checker import get_status_checker
+from loguru import logger
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('logs/scheduler.log'),
-        logging.StreamHandler()
-    ]
+# Configure loguru
+logger.add(
+    "logs/scheduler_{time:YYYY-MM-DD}.log",
+    rotation="1 day",
+    retention="30 days",
+    level="INFO"
 )
-logger = logging.getLogger(__name__)
 
 
 class JobScraperScheduler:
@@ -74,6 +78,30 @@ class JobScraperScheduler:
             if self.orchestrator:
                 self.orchestrator.close()
 
+    def check_job_status_task(self):
+        """Task to check job status - runs daily"""
+        try:
+            logger.info(f"\n{'='*80}")
+            logger.info(f"🔍 JOB STATUS CHECK STARTED - {datetime.now()}")
+            logger.info(f"{'='*80}\n")
+
+            # Get status checker
+            checker = get_status_checker()
+
+            # Run status check
+            stats = checker.check_jobs()
+
+            logger.info(f"\n{'='*80}")
+            logger.info(f"✅ JOB STATUS CHECK COMPLETED")
+            logger.info(f"   Total checked: {stats['total_checked']}")
+            logger.info(f"   Still active: {stats['still_active']}")
+            logger.info(f"   Marked removed: {stats['marked_removed']}")
+            logger.info(f"   Errors: {stats['errors']}")
+            logger.info(f"{'='*80}\n")
+
+        except Exception as e:
+            logger.error(f"❌ Error in job status check: {e}", exc_info=True)
+
     def start(self):
         """Start the scheduler"""
         logger.info("🚀 Starting job scraper scheduler...")
@@ -89,6 +117,18 @@ class JobScraperScheduler:
             name='Scrape jobs from Google Jobs',
             replace_existing=True
         )
+
+        # Add job status checker (runs daily at 2 AM)
+        enable_status_check = os.getenv('CHECK_JOB_STATUS', 'true').lower() == 'true'
+        if enable_status_check:
+            self.scheduler.add_job(
+                func=self.check_job_status_task,
+                trigger=CronTrigger(hour=2, minute=0),  # Run daily at 2 AM
+                id='job_status_check',
+                name='Check job status (HTTP validation)',
+                replace_existing=True
+            )
+            logger.info("✅ Job status checker scheduled (daily at 2:00 AM)")
 
         # Start the scheduler
         self.scheduler.start()
