@@ -1,0 +1,77 @@
+{
+  "programming_languages": [
+    "Python", "JavaScript", "TypeScript", "Java", "C#", "C++", "Go", "Rust",
+    "Ruby", "PHP", "Swift", "Kotlin", "Scala", "R", "MATLAB", "Perl",
+    "Objective-C", "Dart", "Elixir", "Haskell", "Clojure", "F#"
+  ],
+  "frontend": [
+    "React", "Vue.js", "Angular", "Svelte", "Next.js", "Nuxt.js", "Gatsby",
+    "HTML", "CSS", "SASS", "LESS", "Tailwind CSS", "Bootstrap", "Material-UI",
+    "Redux", "MobX", "Webpack", "Vite", "Babel", "jQuery", "Ember.js",
+    "Backbone.js", "D3.js", "Three.js", "WebGL", "Canvas", "Web Components"
+  ],
+  "backend": [
+    "Node.js", "Express", "Django", "Flask", "FastAPI", "Spring Boot",
+    "ASP.NET", "Ruby on Rails", "Laravel", "Symfony", "NestJS", "Koa",
+    "Gin", "Echo", "Fiber", "Actix", "Rocket", "Phoenix", "Play Framework"
+  ],
+  "mobile": [
+    "React Native", "Flutter", "Swift", "SwiftUI", "Kotlin", "Java Android",
+    "Xamarin", "Ionic", "Cordova", "UIKit", "Jetpack Compose"
+  ],
+  "databases": [
+    "PostgreSQL", "MySQL", "MongoDB", "Redis", "Cassandra", "DynamoDB",
+    "Oracle", "SQL Server", "SQLite", "MariaDB", "Elasticsearch",
+    "Neo4j", "CouchDB", "Firebase", "Supabase", "Snowflake", "BigQuery"
+  ],
+  "cloud": [
+    "AWS", "Azure", "Google Cloud", "GCP", "Heroku", "DigitalOcean",
+    "Vercel", "Netlify", "Railway", "Render", "CloudFlare"
+  ],
+  "aws_services": [
+    "EC2", "S3", "Lambda", "RDS", "DynamoDB", "CloudFront", "Route53",
+    "ECS", "EKS", "SQS", "SNS", "CloudWatch", "IAM", "API Gateway"
+  ],
+  "azure_services": [
+    "Azure Functions", "Azure SQL", "Cosmos DB", "Azure Storage",
+    "Azure DevOps", "Azure Kubernetes Service", "Application Insights"
+  ],
+  "devops": [
+    "Docker", "Kubernetes", "Jenkins", "GitLab CI", "GitHub Actions",
+    "CircleCI", "Travis CI", "Terraform", "Ansible", "Chef", "Puppet",
+    "ArgoCD", "Helm", "Prometheus", "Grafana", "ELK Stack", "Datadog",
+    "New Relic", "Nginx", "Apache", "HAProxy"
+  ],
+  "data_science": [
+    "TensorFlow", "PyTorch", "Scikit-learn", "Pandas", "NumPy", "Keras",
+    "OpenCV", "NLTK", "SpaCy", "Hugging Face", "LangChain", "Apache Spark",
+    "Hadoop", "Airflow", "Kafka", "Jupyter", "Tableau", "Power BI"
+  ],
+  "testing": [
+    "Jest", "Mocha", "Chai", "Pytest", "JUnit", "Selenium", "Cypress",
+    "Playwright", "TestNG", "Cucumber", "Postman", "SonarQube"
+  ],
+  "version_control": [
+    "Git", "GitHub", "GitLab", "Bitbucket", "SVN", "Mercurial"
+  ],
+  "methodologies": [
+    "Agile", "Scrum", "Kanban", "DevOps", "CI/CD", "TDD", "BDD",
+    "Microservices", "RESTful API", "GraphQL", "gRPC", "WebSockets",
+    "Serverless", "Event-Driven Architecture", "Domain-Driven Design"
+  ],
+  "healthcare_specific": [
+    "HL7", "FHIR", "DICOM", "ICD-10", "CPT", "SNOMED", "LOINC",
+    "Epic", "Cerner", "Meditech", "Allscripts", "Athenahealth",
+    "EHR", "EMR", "PACS", "RIS", "HIS", "HIPAA", "HITECH",
+    "Telehealth", "Telemedicine", "mHealth", "Clinical Workflows",
+    "Healthcare Interoperability", "Medical Imaging", "Clinical Decision Support"
+  ],
+  "security": [
+    "OAuth", "JWT", "SSL/TLS", "Encryption", "Penetration Testing",
+    "OWASP", "Security Auditing", "Firewall", "VPN", "IAM"
+  ],
+  "soft_skills": [
+    "Leadership", "Communication", "Team Collaboration", "Problem Solving",
+    "Critical Thinking", "Time Management", "Mentoring", "Code Review"
+  ]
+}
