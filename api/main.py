@@ -1,6 +1,8 @@
 """
 FastAPI REST API for Job Scraping System
 Provides endpoints to query and export job data
+
+Phase 5: Added Redis caching and multi-label classification support
 """
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,12 +12,26 @@ from typing import List, Optional
 import sys
 from pathlib import Path
 from datetime import datetime, timedelta
+import json
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from models import Job, ScrapingLog, get_db, JobResponse, JobFilter, StatsResponse
-from models.schemas import JobBase
+from models.database import Job, ScrapingLog, SessionLocal
+from utils.cache import RedisCache, CacheKeys
+from loguru import logger
+
+# Initialize Redis cache
+cache = RedisCache()
+
+
+def get_db():
+    """Get database session"""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 app = FastAPI(
     title="Job Scraping API",
@@ -67,11 +83,11 @@ async def health_check(db: Session = Depends(get_db)):
         }
 
 
-@app.get("/jobs", response_model=List[JobResponse])
+@app.get("/jobs")
 async def get_jobs(
     country: Optional[str] = Query(None, description="Filter by country code (e.g., US, CA)"),
     industry: Optional[str] = Query(None, description="Filter by industry (IT, Healthcare)"),
-    category: Optional[str] = Query(None, description="Filter by category (Frontend, Backend, etc.)"),
+    primary_category: Optional[str] = Query(None, description="Filter by primary category"),
     skill: Optional[str] = Query(None, description="Filter by skill"),
     min_salary: Optional[float] = Query(None, description="Minimum salary"),
     remote_only: bool = Query(False, description="Show only remote jobs"),
@@ -79,7 +95,7 @@ async def get_jobs(
     offset: int = Query(0, description="Offset for pagination"),
     db: Session = Depends(get_db)
 ):
-    """Get jobs with optional filtering"""
+    """Get jobs with optional filtering (multi-label classification support)"""
     query = db.query(Job).filter(Job.is_active == True)
 
     # Apply filters
@@ -89,8 +105,8 @@ async def get_jobs(
     if industry:
         query = query.filter(Job.industry == industry)
 
-    if category:
-        query = query.filter(Job.category == category)
+    if primary_category:
+        query = query.filter(Job.primary_category == primary_category)
 
     if skill:
         # Search in all_skills JSON field
@@ -103,12 +119,13 @@ async def get_jobs(
         query = query.filter(Job.remote == True)
 
     # Order by most recent
-    query = query.order_by(Job.scraped_date.desc())
+    query = query.order_by(Job.created_at.desc())
 
     # Apply pagination
     jobs = query.offset(offset).limit(limit).all()
 
-    return jobs
+    # Convert to dict for JSON serialization
+    return [job.to_dict() if hasattr(job, 'to_dict') else job.__dict__ for job in jobs]
 
 
 @app.get("/jobs/{job_id}", response_model=JobResponse)
@@ -124,7 +141,17 @@ async def get_job(job_id: str, db: Session = Depends(get_db)):
 
 @app.get("/stats")
 async def get_stats(db: Session = Depends(get_db)):
-    """Get statistics about scraped jobs"""
+    """Get statistics about scraped jobs (with Redis caching)"""
+    # Try to get from cache first
+    cache_key = CacheKeys.stats_key()
+    cached_stats = cache.get(cache_key)
+
+    if cached_stats:
+        logger.info("Returning cached stats")
+        return cached_stats
+
+    logger.info("Generating fresh stats")
+
     # Total jobs
     total_jobs = db.query(func.count(Job.id)).filter(Job.is_active == True).scalar()
 
@@ -140,14 +167,13 @@ async def get_stats(db: Session = Depends(get_db)):
         func.count(Job.id).label('count')
     ).filter(Job.is_active == True).group_by(Job.industry).all()
 
-    # Jobs by category
+    # Jobs by primary category (multi-label classification)
     jobs_by_category = db.query(
-        Job.category,
+        Job.primary_category,
         func.count(Job.id).label('count')
-    ).filter(Job.is_active == True).group_by(Job.category).all()
+    ).filter(Job.is_active == True).group_by(Job.primary_category).all()
 
     # Top skills (this is complex with JSON field, simplified version)
-    # In production, you might want to use a separate skills table
     all_jobs = db.query(Job.all_skills).filter(
         Job.is_active == True,
         Job.all_skills != None
@@ -161,21 +187,21 @@ async def get_stats(db: Session = Depends(get_db)):
 
     top_skills = sorted(skills_count.items(), key=lambda x: x[1], reverse=True)[:20]
 
-    # Average salary by category
+    # Average salary by primary category
     avg_salary = db.query(
-        Job.category,
+        Job.primary_category,
         func.avg(Job.salary_min).label('avg_min'),
         func.avg(Job.salary_max).label('avg_max')
     ).filter(
         Job.is_active == True,
         Job.salary_min != None
-    ).group_by(Job.category).all()
+    ).group_by(Job.primary_category).all()
 
-    return {
+    stats = {
         "total_jobs": total_jobs,
         "jobs_by_country": {country: count for country, count in jobs_by_country},
         "jobs_by_industry": {industry: count for industry, count in jobs_by_industry},
-        "jobs_by_category": {category: count for category, count in jobs_by_category},
+        "jobs_by_primary_category": {category: count for category, count in jobs_by_category},
         "top_skills": [{"skill": skill, "count": count} for skill, count in top_skills],
         "avg_salary_by_category": {
             cat: {"min": float(avg_min) if avg_min else 0, "max": float(avg_max) if avg_max else 0}
@@ -184,13 +210,28 @@ async def get_stats(db: Session = Depends(get_db)):
         "last_updated": datetime.utcnow().isoformat()
     }
 
+    # Cache for 5 minutes (300 seconds)
+    cache.set(cache_key, stats, ttl=300)
+
+    return stats
+
 
 @app.get("/skills")
 async def get_skills(
     limit: int = Query(50, le=200),
     db: Session = Depends(get_db)
 ):
-    """Get most common skills from job postings"""
+    """Get most common skills from job postings (with Redis caching)"""
+    # Try cache first
+    cache_key = f"skills:top_{limit}"
+    cached_skills = cache.get(cache_key)
+
+    if cached_skills:
+        logger.info(f"Returning cached skills (limit={limit})")
+        return cached_skills
+
+    logger.info(f"Generating fresh skills (limit={limit})")
+
     all_jobs = db.query(Job.all_skills).filter(
         Job.is_active == True,
         Job.all_skills != None
@@ -204,10 +245,15 @@ async def get_skills(
 
     top_skills = sorted(skills_count.items(), key=lambda x: x[1], reverse=True)[:limit]
 
-    return {
+    result = {
         "skills": [{"name": skill, "count": count} for skill, count in top_skills],
         "total_unique_skills": len(skills_count)
     }
+
+    # Cache for 1 hour (3600 seconds)
+    cache.set(cache_key, result, ttl=3600)
+
+    return result
 
 
 @app.get("/companies")
