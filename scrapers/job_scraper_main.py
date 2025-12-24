@@ -80,8 +80,8 @@ class JobScraperOrchestrator:
 
     def load_config(self):
         """Load configuration files using ConfigLoader"""
-        self.categories = self.config_loader.load_config('job_categories')
-        self.countries_config = self.config_loader.load_config('countries')
+        self.categories = self.config_loader.load_job_categories()
+        self.countries_config = self.config_loader.load_countries()
         logger.info("✅ Configuration loaded")
 
     async def scrape_and_process_jobs_async(
