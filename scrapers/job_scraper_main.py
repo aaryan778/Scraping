@@ -1,59 +1,97 @@
 """
 Main Job Scraping Orchestrator
 Coordinates scraping, processing, and database storage
+
+Phase 4: Production-grade orchestrator with:
+- Playwright async scraper
+- Data validation before storage
+- Fuzzy matching deduplication
+- Redis caching
+- Error notifications
+- Multi-label classification
 """
 import json
-import logging
+import asyncio
 import time
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from pathlib import Path
 import sys
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from scrapers.google_jobs_scraper import GoogleJobsScraper
+from scrapers.playwright_scraper import PlaywrightJobsScraper
 from processors.skills_extractor import SkillsExtractor
 from processors.job_classifier import JobClassifier
-from models.database import SessionLocal, Job, ScrapingLog
+from processors.deduplication import JobDeduplicator
+from models.database import SessionLocal, Job, ScrapingLog, JobStatus
+from utils.validation import JobValidator
+from utils.cache import RedisCache, CacheKeys
+from utils.notifications import NotificationService
+from utils.config_loader import ConfigLoader
+from loguru import logger
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+# Configure loguru
+logger.add(
+    "logs/orchestrator_{time:YYYY-MM-DD}.log",
+    rotation="1 day",
+    retention="30 days",
+    level="INFO"
 )
-logger = logging.getLogger(__name__)
 
 
 class JobScraperOrchestrator:
-    """Main orchestrator for job scraping pipeline"""
+    """Production-grade orchestrator for job scraping pipeline"""
 
     def __init__(self):
-        """Initialize the orchestrator"""
-        self.scraper = GoogleJobsScraper(headless=True)
+        """Initialize the orchestrator with all utilities"""
+        # Load configuration
+        self.config_loader = ConfigLoader()
+
+        # Initialize scraper (will be created per-session for async)
+        self.scraper = None
+
+        # Initialize processors
         self.skills_extractor = SkillsExtractor()
         self.job_classifier = JobClassifier()
+        self.deduplicator = JobDeduplicator()
+
+        # Initialize utilities
+        self.validator = JobValidator()
+        self.cache = RedisCache()
+        self.notifier = NotificationService()
+
+        # Database session
         self.db = SessionLocal()
-        logger.info("✅ Job Scraper Orchestrator initialized")
+
+        # Statistics
+        self.stats = {
+            'total_scraped': 0,
+            'total_validated': 0,
+            'total_validation_failed': 0,
+            'total_duplicates': 0,
+            'total_new': 0,
+            'total_updated': 0,
+            'errors': 0
+        }
+
+        logger.info("✅ Job Scraper Orchestrator initialized (Phase 4)")
 
     def load_config(self):
-        """Load configuration files"""
-        with open('config/job_categories.json', 'r') as f:
-            self.categories = json.load(f)
-
-        with open('config/countries.json', 'r') as f:
-            self.countries_config = json.load(f)
-
+        """Load configuration files using ConfigLoader"""
+        self.categories = self.config_loader.load_config('job_categories')
+        self.countries_config = self.config_loader.load_config('countries')
         logger.info("✅ Configuration loaded")
 
-    def scrape_and_process_jobs(
+    async def scrape_and_process_jobs_async(
         self,
         job_titles: List[str],
         countries: List[str],
         max_jobs_per_search: int = 50
     ) -> Dict:
         """
-        Main method to scrape and process jobs
+        Main method to scrape and process jobs (async version)
 
         Args:
             job_titles: List of job titles to search
@@ -64,101 +102,176 @@ class JobScraperOrchestrator:
             Dictionary with statistics
         """
         start_time = time.time()
-        total_scraped = 0
-        total_new = 0
-        total_updated = 0
+
+        # Reset stats
+        self.stats = {
+            'total_scraped': 0,
+            'total_validated': 0,
+            'total_validation_failed': 0,
+            'total_duplicates': 0,
+            'total_new': 0,
+            'total_updated': 0,
+            'errors': 0
+        }
 
         # Get country names from config
         country_map = {c['code']: c['google_jobs_location']
                       for c in self.countries_config['countries']}
 
-        for country_code in countries:
-            country_name = country_map.get(country_code, country_code)
+        # Create Playwright scraper
+        async with PlaywrightJobsScraper() as scraper:
+            self.scraper = scraper
 
-            for job_title in job_titles:
-                try:
-                    logger.info(f"\n{'='*60}")
-                    logger.info(f"🔍 Scraping: {job_title} in {country_name}")
-                    logger.info(f"{'='*60}")
+            for country_code in countries:
+                country_name = country_map.get(country_code, country_code)
 
-                    # Scrape jobs
-                    raw_jobs = self.scraper.search_jobs(
-                        job_title=job_title,
-                        location=country_name,
-                        max_jobs=max_jobs_per_search
-                    )
+                for job_title in job_titles:
+                    try:
+                        logger.info(f"\n{'='*60}")
+                        logger.info(f"🔍 Scraping: {job_title} in {country_name}")
+                        logger.info(f"{'='*60}")
 
-                    total_scraped += len(raw_jobs)
+                        # Scrape jobs using Playwright
+                        raw_jobs = await scraper.search_jobs(
+                            job_title=job_title,
+                            location=country_name,
+                            max_jobs=max_jobs_per_search
+                        )
 
-                    # Process and store each job
-                    for raw_job in raw_jobs:
-                        try:
-                            processed_job = self._process_job(raw_job, country_code)
-                            is_new = self._store_job(processed_job)
+                        self.stats['total_scraped'] += len(raw_jobs)
+                        logger.info(f"📦 Found {len(raw_jobs)} jobs")
 
-                            if is_new:
-                                total_new += 1
-                            else:
-                                total_updated += 1
+                        # Process and store each job
+                        for raw_job in raw_jobs:
+                            try:
+                                await self._process_and_store_job(raw_job, country_code)
+                            except Exception as e:
+                                logger.error(f"❌ Error processing job: {e}")
+                                self.stats['errors'] += 1
+                                self.notifier.notify_error(
+                                    error_type="job_processing_error",
+                                    message=f"Failed to process job: {str(e)}",
+                                    details={'job': raw_job.get('title', 'Unknown')},
+                                    critical=False
+                                )
+                                continue
 
-                        except Exception as e:
-                            logger.error(f"❌ Error processing job: {e}")
-                            continue
+                        # Log scraping activity
+                        self._log_scraping_activity(
+                            search_query=job_title,
+                            country=country_name,
+                            jobs_found=len(raw_jobs),
+                            status="success",
+                            duration=time.time() - start_time
+                        )
 
-                    # Log scraping activity
-                    self._log_scraping_activity(
-                        search_query=job_title,
-                        country=country_name,
-                        jobs_found=len(raw_jobs),
-                        status="success",
-                        duration=time.time() - start_time
-                    )
+                    except Exception as e:
+                        logger.error(f"❌ Error scraping {job_title} in {country_name}: {e}")
+                        self.stats['errors'] += 1
 
-                    # Small delay between searches to avoid rate limiting
-                    time.sleep(2)
+                        self._log_scraping_activity(
+                            search_query=job_title,
+                            country=country_name,
+                            jobs_found=0,
+                            status="failed",
+                            error_message=str(e),
+                            duration=time.time() - start_time
+                        )
 
-                except Exception as e:
-                    logger.error(f"❌ Error scraping {job_title} in {country_name}: {e}")
-                    self._log_scraping_activity(
-                        search_query=job_title,
-                        country=country_name,
-                        jobs_found=0,
-                        status="failed",
-                        error_message=str(e),
-                        duration=time.time() - start_time
-                    )
-                    continue
+                        self.notifier.notify_error(
+                            error_type="scraping_failure",
+                            message=f"Failed to scrape {job_title} in {country_name}",
+                            details={'error': str(e)},
+                            critical=False
+                        )
+                        continue
 
-        # Close scraper
-        self.scraper.close_driver()
-
+        # Calculate duration
         duration = time.time() - start_time
-        stats = {
-            "total_scraped": total_scraped,
-            "total_new": total_new,
-            "total_updated": total_updated,
-            "duration_seconds": duration,
-            "timestamp": datetime.utcnow().isoformat()
-        }
+        self.stats['duration_seconds'] = duration
+        self.stats['timestamp'] = datetime.utcnow().isoformat()
 
+        # Log summary
         logger.info(f"\n{'='*60}")
         logger.info(f"✅ SCRAPING COMPLETE")
-        logger.info(f"   Total scraped: {total_scraped}")
-        logger.info(f"   New jobs: {total_new}")
-        logger.info(f"   Updated jobs: {total_updated}")
+        logger.info(f"   Total scraped: {self.stats['total_scraped']}")
+        logger.info(f"   Validated: {self.stats['total_validated']}")
+        logger.info(f"   Validation failed: {self.stats['total_validation_failed']}")
+        logger.info(f"   Duplicates: {self.stats['total_duplicates']}")
+        logger.info(f"   New jobs: {self.stats['total_new']}")
+        logger.info(f"   Updated jobs: {self.stats['total_updated']}")
+        logger.info(f"   Errors: {self.stats['errors']}")
         logger.info(f"   Duration: {duration:.2f} seconds")
         logger.info(f"{'='*60}\n")
 
-        return stats
+        # Invalidate cache
+        self.cache.delete(CacheKeys.stats_key())
 
-    def _process_job(self, raw_job: Dict, country_code: str) -> Dict:
-        """Process a raw job with skills extraction and classification"""
+        return self.stats
+
+    def scrape_and_process_jobs(
+        self,
+        job_titles: List[str],
+        countries: List[str],
+        max_jobs_per_search: int = 50
+    ) -> Dict:
+        """Synchronous wrapper for scrape_and_process_jobs_async"""
+        return asyncio.run(
+            self.scrape_and_process_jobs_async(job_titles, countries, max_jobs_per_search)
+        )
+
+    async def _process_and_store_job(self, raw_job: Dict, country_code: str):
+        """
+        Process and store job with validation, deduplication, and classification
+
+        Args:
+            raw_job: Raw job data from scraper
+            country_code: Country code (e.g., 'US')
+        """
+        # Step 1: Build initial job data
+        processed_job = await self._process_job(raw_job, country_code)
+
+        # Step 2: Validate job data
+        is_valid, validation_errors = self.validator.validate(processed_job)
+
+        if not is_valid:
+            logger.warning(
+                f"⚠️  Validation failed for {processed_job.get('title', 'Unknown')}: "
+                f"{', '.join(validation_errors)}"
+            )
+            self.stats['total_validation_failed'] += 1
+            self.notifier.log_validation_failure(processed_job, validation_errors)
+            return
+
+        self.stats['total_validated'] += 1
+
+        # Step 3: Sanitize data
+        processed_job = self.validator.sanitize(processed_job)
+
+        # Step 4: Check for duplicates in database
+        is_duplicate, existing_job = await self._check_duplicate_in_db(processed_job)
+
+        if is_duplicate:
+            # Merge with existing job
+            logger.info(
+                f"🔄 Duplicate found: {processed_job.get('title')} at "
+                f"{processed_job.get('company')} (merging)"
+            )
+            self.stats['total_duplicates'] += 1
+            await self._merge_duplicate_job(existing_job, processed_job)
+            return
+
+        # Step 5: Store new job
+        await self._store_new_job(processed_job)
+
+    async def _process_job(self, raw_job: Dict, country_code: str) -> Dict:
+        """Process a raw job with skills extraction and multi-label classification"""
         # Extract skills
         skills_data = self.skills_extractor.extract_skills(
             raw_job.get('description', '')
         )
 
-        # Classify job
+        # Multi-label classification
         classification = self.job_classifier.classify_job(
             title=raw_job.get('title', ''),
             description=raw_job.get('description', '')
@@ -181,7 +294,7 @@ class JobScraperOrchestrator:
             parts = location.split(',')
             city = parts[0].strip()
 
-        # Build processed job
+        # Build processed job with multi-label classification
         processed_job = {
             "job_id": raw_job.get('job_id'),
             "title": raw_job.get('title'),
@@ -191,55 +304,180 @@ class JobScraperOrchestrator:
             "city": city,
             "remote": raw_job.get('remote', False),
             "description": raw_job.get('description'),
-            "category": classification.get('category'),
+            "url": raw_job.get('source_url'),
+
+            # Multi-label classification
             "industry": classification.get('industry'),
+            "primary_category": classification.get('primary_category'),
+            "secondary_categories": classification.get('secondary_categories', []),
+            "classification_confidence": classification.get('classification_confidence', 0.0),
+
+            # Skills
             "experience_level": experience_level,
             "skills_required": skills_data.get('required', []),
             "skills_preferred": skills_data.get('preferred', []),
             "all_skills": skills_data.get('all_skills', []),
+
+            # Salary
             "salary_min": salary_data.get('min'),
             "salary_max": salary_data.get('max'),
             "salary_currency": salary_data.get('currency', 'USD'),
+
+            # Source
             "source_url": raw_job.get('source_url'),
-            "source_platform": raw_job.get('source_platform'),
+            "source_platform": raw_job.get('source_platform', 'Google Jobs'),
             "posted_date": raw_job.get('posted_date'),
+
+            # Status
+            "status": JobStatus.ACTIVE,
+            "is_active": True,
         }
 
         return processed_job
 
-    def _store_job(self, job_data: Dict) -> bool:
+    async def _check_duplicate_in_db(
+        self,
+        job_data: Dict
+    ) -> Tuple[bool, Job]:
         """
-        Store job in database
+        Check if job is a duplicate using fuzzy matching
+
+        Args:
+            job_data: Processed job data
 
         Returns:
-            True if new job, False if updated existing job
+            Tuple of (is_duplicate, existing_job or None)
+        """
+        # Get recent jobs from same company (within last 90 days)
+        from datetime import timedelta
+
+        cutoff_date = datetime.utcnow() - timedelta(days=90)
+
+        similar_jobs = self.db.query(Job).filter(
+            Job.company.ilike(f"%{job_data.get('company', '')}%"),
+            Job.country == job_data.get('country'),
+            Job.created_at >= cutoff_date
+        ).limit(100).all()
+
+        # Check each similar job for fuzzy match
+        for existing_job in similar_jobs:
+            existing_job_dict = {
+                'title': existing_job.title,
+                'company': existing_job.company,
+                'location': existing_job.location
+            }
+
+            is_dup, score = self.deduplicator.is_duplicate(job_data, existing_job_dict)
+
+            if is_dup:
+                logger.debug(
+                    f"Duplicate detected (score: {score:.2f}): "
+                    f"{job_data.get('title')} ≈ {existing_job.title}"
+                )
+                return True, existing_job
+
+        return False, None
+
+    async def _merge_duplicate_job(self, existing_job: Job, new_job_data: Dict):
+        """
+        Merge duplicate job data into existing job
+
+        Args:
+            existing_job: Existing job in database
+            new_job_data: New job data to merge
         """
         try:
-            # Check if job already exists
-            existing_job = self.db.query(Job).filter(
-                Job.job_id == job_data['job_id']
-            ).first()
+            # Update last seen timestamp
+            existing_job.last_updated = datetime.utcnow()
 
-            if existing_job:
-                # Update existing job
-                for key, value in job_data.items():
-                    setattr(existing_job, key, value)
-                existing_job.last_updated = datetime.utcnow()
-                self.db.commit()
-                logger.info(f"🔄 Updated: {job_data['title']} at {job_data['company']}")
-                return False
-            else:
-                # Create new job
-                new_job = Job(**job_data)
-                self.db.add(new_job)
-                self.db.commit()
-                logger.info(f"✅ New job: {job_data['title']} at {job_data['company']}")
-                return True
+            # Track source if different
+            if hasattr(existing_job, 'dedup_sources'):
+                sources = existing_job.dedup_sources or []
+                new_source = new_job_data.get('source_platform', 'Google Jobs')
+                if new_source not in sources:
+                    sources.append(new_source)
+                    existing_job.dedup_sources = sources
+
+                # Track source URLs
+                source_urls = existing_job.dedup_source_urls or []
+                new_url = new_job_data.get('source_url')
+                if new_url and new_url not in source_urls:
+                    source_urls.append(new_url)
+                    existing_job.dedup_source_urls = source_urls
+
+                # Increment dedup count
+                existing_job.dedup_count = (existing_job.dedup_count or 1) + 1
+
+            # Merge skills (union of all skills)
+            all_skills = list(set(
+                (existing_job.all_skills or []) +
+                (new_job_data.get('all_skills', []))
+            ))
+            existing_job.all_skills = all_skills
+
+            # Update description if new one is better (longer, more detailed)
+            if new_job_data.get('description'):
+                new_desc_len = len(new_job_data['description'])
+                existing_desc_len = len(existing_job.description or '')
+                if new_desc_len > existing_desc_len:
+                    existing_job.description = new_job_data['description']
+
+            # Update salary if not present
+            if not existing_job.salary_min and new_job_data.get('salary_min'):
+                existing_job.salary_min = new_job_data['salary_min']
+                existing_job.salary_max = new_job_data.get('salary_max')
+                existing_job.salary_currency = new_job_data.get('salary_currency', 'USD')
+
+            # Keep job active
+            existing_job.is_active = True
+            existing_job.status = JobStatus.ACTIVE
+
+            self.db.commit()
+            self.stats['total_updated'] += 1
 
         except Exception as e:
-            logger.error(f"❌ Error storing job: {e}")
+            logger.error(f"❌ Error merging duplicate job: {e}")
             self.db.rollback()
-            return False
+            self.stats['errors'] += 1
+
+    async def _store_new_job(self, job_data: Dict):
+        """
+        Store new job in database
+
+        Args:
+            job_data: Processed and validated job data
+        """
+        try:
+            # Create new job
+            new_job = Job(**job_data)
+
+            # Calculate expiry date
+            new_job.calculate_expiry(days=30)
+
+            # Initialize dedup tracking
+            new_job.dedup_sources = [job_data.get('source_platform', 'Google Jobs')]
+            new_job.dedup_source_urls = [job_data.get('source_url')] if job_data.get('source_url') else []
+            new_job.dedup_count = 1
+
+            self.db.add(new_job)
+            self.db.commit()
+
+            logger.info(
+                f"✅ New job: {job_data.get('title')} at {job_data.get('company')} "
+                f"({job_data.get('primary_category')})"
+            )
+            self.stats['total_new'] += 1
+
+        except Exception as e:
+            logger.error(f"❌ Error storing new job: {e}")
+            self.db.rollback()
+            self.stats['errors'] += 1
+            self.notifier.notify_error(
+                error_type="database_error",
+                message=f"Failed to store job: {str(e)}",
+                details={'job': job_data.get('title', 'Unknown')},
+                critical=True
+            )
 
     def _log_scraping_activity(
         self,
@@ -301,10 +539,10 @@ class JobScraperOrchestrator:
 
     def close(self):
         """Clean up resources"""
-        if hasattr(self.scraper, 'driver') and self.scraper.driver:
-            self.scraper.close_driver()
+        # Playwright scraper uses context managers, no manual cleanup needed
         if self.db:
             self.db.close()
+        logger.info("🔒 Orchestrator resources closed")
 
 
 # Example usage
