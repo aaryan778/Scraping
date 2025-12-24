@@ -353,8 +353,11 @@ class JobScraperOrchestrator:
 
         cutoff_date = datetime.utcnow() - timedelta(days=90)
 
+        # Escape SQL wildcards to prevent injection
+        company_name = job_data.get('company', '').replace('%', '\\%').replace('_', '\\_')
+
         similar_jobs = self.db.query(Job).filter(
-            Job.company.ilike(f"%{job_data.get('company', '')}%"),
+            Job.company.ilike(f"%{company_name}%"),
             Job.country == job_data.get('country'),
             Job.created_at >= cutoff_date
         ).limit(100).all()

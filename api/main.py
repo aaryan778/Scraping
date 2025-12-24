@@ -112,22 +112,78 @@ async def root():
 
 @app.get("/health")
 async def health_check(db: Session = Depends(get_db)):
-    """Health check endpoint"""
+    """
+    Comprehensive health check endpoint
+
+    Checks:
+    - Database connectivity and query performance
+    - Redis cache connectivity
+    - Last scraping activity
+    - System status
+    """
+    health_status = {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "checks": {}
+    }
+
+    # Check database
     try:
-        # Check database connection
         total_jobs = db.query(func.count(Job.id)).scalar()
-        return {
+        health_status["checks"]["database"] = {
             "status": "healthy",
-            "database": "connected",
-            "total_jobs": total_jobs,
-            "timestamp": datetime.utcnow().isoformat()
+            "total_jobs": total_jobs
         }
     except Exception as e:
-        return {
+        health_status["status"] = "unhealthy"
+        health_status["checks"]["database"] = {
             "status": "unhealthy",
-            "error": str(e),
-            "timestamp": datetime.utcnow().isoformat()
+            "error": str(e)
         }
+
+    # Check Redis cache
+    try:
+        cache.client.ping()
+        health_status["checks"]["redis"] = {
+            "status": "healthy"
+        }
+    except Exception as e:
+        health_status["status"] = "degraded"
+        health_status["checks"]["redis"] = {
+            "status": "unhealthy",
+            "error": str(e)
+        }
+
+    # Check last scraping activity
+    try:
+        last_log = db.query(ScrapingLog).order_by(
+            ScrapingLog.timestamp.desc()
+        ).first()
+
+        if last_log:
+            hours_since_last = (datetime.utcnow() - last_log.timestamp).total_seconds() / 3600
+            scraper_status = "healthy" if hours_since_last < 2 else "stale"
+
+            health_status["checks"]["scraper"] = {
+                "status": scraper_status,
+                "last_run": last_log.timestamp.isoformat(),
+                "hours_ago": round(hours_since_last, 2)
+            }
+
+            if scraper_status == "stale":
+                health_status["status"] = "degraded"
+        else:
+            health_status["checks"]["scraper"] = {
+                "status": "unknown",
+                "message": "No scraping logs found"
+            }
+    except Exception as e:
+        health_status["checks"]["scraper"] = {
+            "status": "error",
+            "error": str(e)
+        }
+
+    return health_status
 
 
 @app.get("/jobs")
@@ -166,6 +222,9 @@ async def get_jobs(
     if remote_only:
         query = query.filter(Job.remote == True)
 
+    # Get total count before pagination
+    total = query.count()
+
     # Order by most recent
     query = query.order_by(Job.created_at.desc())
 
@@ -173,7 +232,17 @@ async def get_jobs(
     jobs = query.offset(offset).limit(limit).all()
 
     # Convert to dict for JSON serialization
-    return [job.to_dict() if hasattr(job, 'to_dict') else job.__dict__ for job in jobs]
+    results = [job.to_dict() if hasattr(job, 'to_dict') else job.__dict__ for job in jobs]
+
+    # Return with pagination metadata
+    return {
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "count": len(results),
+        "pages": (total + limit - 1) // limit if limit > 0 else 1,
+        "results": results
+    }
 
 
 @app.get("/jobs/{job_id}")

@@ -151,7 +151,8 @@ def get_cache() -> RedisCache:
 
 # Cache key helpers
 class CacheKeys:
-    """Standard cache key prefixes"""
+    """Standard cache key prefixes with versioning"""
+    VERSION = "v2"  # Increment this when cache structure changes
     STATS = "stats"
     TRENDS = "trends"
     SKILLS = "skills"
@@ -160,23 +161,37 @@ class CacheKeys:
 
     @staticmethod
     def stats_key(filter_type: str = "all") -> str:
-        """Generate stats cache key"""
-        return f"{CacheKeys.STATS}:{filter_type}"
+        """Generate stats cache key (versioned)"""
+        return f"{CacheKeys.VERSION}:{CacheKeys.STATS}:{filter_type}"
 
     @staticmethod
     def trends_key(time_window: int = 30) -> str:
-        """Generate trends cache key"""
-        return f"{CacheKeys.TRENDS}:{time_window}d"
+        """Generate trends cache key (versioned)"""
+        return f"{CacheKeys.VERSION}:{CacheKeys.TRENDS}:{time_window}d"
 
     @staticmethod
     def skills_key(limit: int = 50) -> str:
-        """Generate skills cache key"""
-        return f"{CacheKeys.SKILLS}:top{limit}"
+        """Generate skills cache key (versioned)"""
+        return f"{CacheKeys.VERSION}:{CacheKeys.SKILLS}:top{limit}"
 
     @staticmethod
     def job_key(job_id: str) -> str:
-        """Generate job cache key"""
-        return f"{CacheKeys.JOBS}:{job_id}"
+        """Generate job cache key (versioned)"""
+        return f"{CacheKeys.VERSION}:{CacheKeys.JOBS}:{job_id}"
+
+    @staticmethod
+    def invalidate_all_versioned(cache: 'RedisCache') -> int:
+        """
+        Invalidate all cache keys for current version
+
+        Returns:
+            Number of keys deleted
+        """
+        pattern = f"{CacheKeys.VERSION}:*"
+        keys = cache.client.keys(pattern)
+        if keys:
+            return cache.client.delete(*keys)
+        return 0
 
 
 if __name__ == "__main__":

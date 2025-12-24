@@ -64,6 +64,26 @@ services:
     profiles:
       - dev
 
+  # PostgreSQL Backup Service
+  postgres-backup:
+    image: prodrigestivill/postgres-backup-local:16
+    container_name: job_scraper_backup
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-jobs_db}
+      POSTGRES_USER: ${POSTGRES_USER:-jobscraper}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme123}
+      SCHEDULE: "@daily"        # Daily backups at midnight
+      BACKUP_KEEP_DAYS: 7       # Keep 7 days of backups
+      BACKUP_KEEP_WEEKS: 4      # Keep 4 weeks of backups
+      BACKUP_KEEP_MONTHS: 3     # Keep 3 months of backups
+      HEALTHCHECK_PORT: 8080
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
 volumes:
   postgres_data:
     driver: local
