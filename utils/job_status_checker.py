@@ -10,6 +10,7 @@ This module periodically checks if job listings are still available by:
 """
 
 import asyncio
+import os
 import random
 from datetime import datetime, timedelta
 from typing import List, Dict, Tuple, Optional
@@ -433,17 +434,14 @@ def get_status_checker() -> JobStatusChecker:
     global _checker_instance
 
     if _checker_instance is None:
-        config_loader = ConfigLoader()
-        env_config = config_loader.load_config('env')  # Loads from .env
-
         _checker_instance = JobStatusChecker(
-            check_interval_days=int(env_config.get('STATUS_CHECK_INTERVAL_DAYS', 7)),
-            batch_size=int(env_config.get('STATUS_CHECK_BATCH_SIZE', 50)),
-            rate_limit_min=float(env_config.get('RATE_LIMIT_DELAY_MIN', 1.0)),
-            rate_limit_max=float(env_config.get('RATE_LIMIT_DELAY_MAX', 3.0)),
-            timeout=int(env_config.get('HTTP_TIMEOUT', 10)),
-            rotate_user_agents=env_config.get('ROTATE_USER_AGENTS', 'true').lower() == 'true',
-            max_concurrent=int(env_config.get('MAX_CONCURRENT_CHECKS', 5))
+            check_interval_days=int(os.getenv('STATUS_CHECK_INTERVAL_DAYS', 7)),
+            batch_size=int(os.getenv('STATUS_CHECK_BATCH_SIZE', 50)),
+            rate_limit_min=float(os.getenv('RATE_LIMIT_DELAY_MIN', 1.0)),
+            rate_limit_max=float(os.getenv('RATE_LIMIT_DELAY_MAX', 3.0)),
+            timeout=int(os.getenv('HTTP_TIMEOUT', 10)),
+            rotate_user_agents=os.getenv('ROTATE_USER_AGENTS', 'true').lower() == 'true',
+            max_concurrent=int(os.getenv('MAX_CONCURRENT_CHECKS', 5))
         )
 
     return _checker_instance
