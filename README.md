@@ -1,366 +1,403 @@
 # Job Scraping System
 
-An automated job scraping and analysis system that collects job postings, extracts skills, categorizes positions, and provides both a web dashboard and API for accessing the data.
+A tool that automatically collects job postings from the internet, organizes them, and lets you search and analyze them through a web interface or API.
 
-## What This Does
+## What Does This Do?
 
-This system automatically:
-- Scrapes job postings from Google Jobs (which pulls from Indeed, LinkedIn, Glassdoor, etc.)
-- Extracts required and preferred skills from job descriptions
-- Categorizes jobs into 14 different specialties (8 IT, 6 Healthcare)
-- Removes duplicate postings from different sources
-- Checks if jobs are still active
-- Stores everything in a PostgreSQL database
-- Provides a web dashboard to view and export data
-- Offers a REST API for programmatic access
+This system:
+- Automatically collects job postings from Google Jobs (which includes Indeed, LinkedIn, Glassdoor, and others)
+- Figures out what skills each job needs (like Python, JavaScript, nursing, etc.)
+- Sorts jobs into categories (like Frontend Developer, Data Scientist, Healthcare IT, etc.)
+- Removes duplicate postings
+- Checks if jobs are still available
+- Stores everything in a database
+- Gives you a website to browse and export the data
+- Provides an API if you want to access the data programmatically
 
 ## Features
 
-- **Automated Scraping**: Runs hourly to keep job data fresh
-- **Smart Classification**: Automatically categorizes jobs with confidence scores
-- **Duplicate Detection**: Finds and merges the same job posted on multiple sites
-- **Skills Extraction**: Identifies 500+ technical skills from job descriptions
-- **Multi-Country**: Supports US, Canada, India, and Australia
-- **Data Validation**: Filters out spam and incomplete postings
-- **Dashboard**: Interactive web interface with charts and export options
-- **API**: RESTful API with authentication and caching
-- **Database Backups**: Automatic daily backups with retention policy
+- Runs automatically every few hours to keep data current
+- Categorizes jobs into 14 different specialties
+- Recognizes over 500 technical skills in job descriptions
+- Works with jobs from US, Canada, India, and Australia
+- Filters out spam and low-quality postings
+- Web dashboard with charts and Excel export
+- REST API for custom integrations
+- Automatic daily backups of your data
 
-## System Requirements
+## Requirements
 
-- Python 3.9 or higher
-- PostgreSQL 16 or higher
-- Redis 7 or higher (for caching)
-- 2GB RAM minimum
-- Linux, macOS, or Windows
+You'll need:
+- Python 3.9 or newer
+- PostgreSQL 16 or newer (database to store jobs)
+- Redis 7 or newer (makes searches faster)
+- At least 2GB of RAM
+- Works on Linux, macOS, or Windows
 
-## Installation
+## Quick Start with Docker
 
-### Option 1: Docker (Recommended)
+Docker runs everything in containers so you don't have to install PostgreSQL and Redis manually.
 
 ```bash
-# Clone the repository
+# 1. Download the code
 git clone <your-repo-url>
 cd Scraping
 
-# Copy environment file
+# 2. Copy the example settings file
 cp .env.example .env
 
-# Edit .env with your settings (see Configuration section)
+# 3. Edit the settings file (change passwords, etc.)
 nano .env
 
-# Start everything with Docker
+# 4. Start everything
 docker-compose up -d
 
-# Initialize database
+# 5. Set up the database
 docker-compose exec postgres psql -U jobscraper -d jobs_db < init.sql
 ```
 
-### Option 2: Manual Installation
+That's it! The system is now running.
+
+## Manual Installation
+
+If you prefer to install without Docker:
 
 ```bash
-# Clone the repository
+# 1. Download the code
 git clone <your-repo-url>
 cd Scraping
 
-# Create a virtual environment
+# 2. Create a Python virtual environment
 python -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
-# Install Python dependencies
+# 3. Install Python packages
 pip install -r requirements.txt
 
-# Install Playwright browser
+# 4. Install the browser automation tool
 playwright install chromium
 
-# Copy environment file
+# 5. Copy the settings file
 cp .env.example .env
 
-# Edit .env file with your database credentials
+# 6. Edit settings with your database info
 nano .env
 ```
 
+You'll also need to install PostgreSQL and Redis separately on your system.
+
 ## Configuration
 
-### Basic Setup
+Open the `.env` file and update these settings:
 
-Edit the `.env` file with your settings:
+### Basic Settings
 
 ```bash
-# Database
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
-POSTGRES_DB=jobs_db
-POSTGRES_USER=jobscraper
-POSTGRES_PASSWORD=your_password_here
+# Database connection
+POSTGRES_HOST=localhost          # Where PostgreSQL is running
+POSTGRES_PORT=5432              # PostgreSQL port
+POSTGRES_DB=jobs_db             # Database name
+POSTGRES_USER=jobscraper        # Database username
+POSTGRES_PASSWORD=your_password # Change this!
 
-# Redis Cache
+# Cache connection (makes things faster)
 REDIS_HOST=localhost
 REDIS_PORT=6379
 
-# Scraping
-SCRAPE_INTERVAL_HOURS=2
-MAX_JOBS_PER_SEARCH=50
+# How often to scrape for new jobs
+SCRAPE_INTERVAL_HOURS=2         # Check for new jobs every 2 hours
+MAX_JOBS_PER_SEARCH=50          # Limit per search to avoid overload
 ```
 
-### Security Setup (Recommended for Production)
+### Security Settings (Important for Production)
 
-1. **Generate a secure password hash for the dashboard:**
-```bash
-python utils/auth.py your-secure-password
-# Copy the output hash to your .env file
-```
+If you're running this on a server that others can access, set these up:
 
-2. **Add to `.env`:**
 ```bash
-# Dashboard Authentication
+# Dashboard login
 DASHBOARD_AUTH_ENABLED=true
 DASHBOARD_USERNAME=admin
-DASHBOARD_PASSWORD_HASH=<paste-hash-here>
+DASHBOARD_PASSWORD=your-secure-password
 
-# API Authentication
+# API access control
 API_AUTH_ENABLED=true
-API_KEY=<generate-random-key>
+API_KEY=make-this-a-long-random-string
 ```
 
-## Usage
-
-### Initialize the Database
+For better security, use hashed passwords instead of plain text. Run this command to generate one:
 
 ```bash
-# Create database tables
+python -c "from utils.auth import hash_password; h,s = hash_password('your-password'); print(f'DASHBOARD_PASSWORD_HASH={h}\nDASHBOARD_PASSWORD_SALT={s}')"
+```
+
+Copy the output into your `.env` file.
+
+## How to Use
+
+### First Time Setup
+
+Before scraping any jobs, initialize the database:
+
+```bash
 python main.py --init-db
 ```
 
-### Run One-Time Scraping
+This creates all the necessary tables.
+
+### Scrape Jobs Once
+
+To collect jobs one time:
 
 ```bash
-# Scrape jobs once
 python main.py --scrape
 ```
 
-### Start Automated Scheduler
+This will take a few minutes depending on how many job titles you're searching for.
+
+### Run Automatically
+
+To have the system check for new jobs every few hours:
 
 ```bash
-# Run scraper every hour
 python main.py --schedule
 ```
 
-### Start the Dashboard
+Leave this running in the background.
+
+### Open the Dashboard
+
+To view jobs in your browser:
 
 ```bash
-# Start web dashboard on port 8501
 python main.py --dashboard
 ```
 
-Then open http://localhost:8501 in your browser.
+Then open your browser and go to: http://localhost:8501
+
+Default login is username: `admin`, password: `changeme456` (change this in your `.env` file).
 
 ### Start the API
 
+If you want to access data programmatically:
+
 ```bash
-# Start API server on port 8000
 python main.py --api
 ```
 
-Then access http://localhost:8000/docs for API documentation.
+The API will run at: http://localhost:8000
+
+View the API documentation at: http://localhost:8000/docs
 
 ### Run Everything Together
 
+To start the scheduler, dashboard, and API all at once:
+
 ```bash
-# Start scheduler + API + dashboard
 python main.py --all
 ```
 
-## Dashboard Features
+## Using the Dashboard
 
-The web dashboard provides:
+When you open the dashboard in your browser, you'll see:
 
-- **Overview**: Charts showing jobs by industry, category, and experience level
-- **Geographic**: Jobs by country and city, remote vs on-site distribution
-- **Skills**: Most in-demand skills across all jobs
-- **Job Listings**: Searchable list with filters
-- **Export**: Download filtered data as Excel files
+**Overview Tab:**
+- Charts showing job distribution by industry and category
+- Experience level breakdown (Junior, Mid-level, Senior)
+- Salary statistics
 
-Login with credentials from your `.env` file (default: admin/changeme456).
+**Geographic Tab:**
+- Jobs by country and city
+- Remote vs on-site distribution
+- Map visualizations
 
-## API Endpoints
+**Skills Tab:**
+- Most demanded skills across all jobs
+- Skills by category
+- Trending skills
 
-All endpoints require an API key if authentication is enabled. Include it in the header:
-```
-X-API-Key: your-api-key-here
-```
+**Jobs Tab:**
+- Searchable list of all jobs
+- Filters by country, industry, category, skills
+- Click any job to see full details
+- Export filtered results to Excel
+
+## Using the API
+
+The API lets you access job data from your own code.
 
 ### Get Jobs
 
 ```bash
-GET /jobs?country=US&industry=IT&limit=100
+curl "http://localhost:8000/jobs?country=US&industry=IT&limit=10"
+```
 
-Response:
+This returns:
+```json
 {
   "total": 12547,
-  "pages": 126,
+  "pages": 1255,
   "offset": 0,
-  "limit": 100,
-  "results": [...]
-}
-```
-
-**Query Parameters:**
-- `country` - Filter by country code (US, CA, IN, AU)
-- `industry` - Filter by industry (IT, Healthcare)
-- `primary_category` - Filter by job category
-- `skill` - Filter by required skill
-- `min_salary` - Minimum salary
-- `remote_only` - Show only remote jobs (true/false)
-- `limit` - Results per page (max 1000)
-- `offset` - Pagination offset
-
-### Get Statistics
-
-```bash
-GET /stats
-
-Response:
-{
-  "total_jobs": 12547,
-  "jobs_by_country": {...},
-  "jobs_by_industry": {...},
-  "top_skills": [...]
-}
-```
-
-### Get Top Skills
-
-```bash
-GET /skills?limit=50
-
-Response:
-{
-  "skills": [
-    {"name": "Python", "count": 5432},
-    {"name": "JavaScript", "count": 4821}
+  "limit": 10,
+  "results": [
+    {
+      "title": "Senior Python Developer",
+      "company": "Tech Corp",
+      "location": "San Francisco, CA",
+      "salary_min": 120000,
+      "salary_max": 180000,
+      "remote": true,
+      "skills_required": ["Python", "Django", "PostgreSQL"],
+      ...
+    }
   ]
 }
 ```
 
-### Health Check
+### Filter Options
+
+Add these to the URL to filter results:
+
+- `?country=US` - Only US jobs (US, CA, IN, AU)
+- `?industry=IT` - Only IT jobs (IT or Healthcare)
+- `?primary_category=Frontend Development` - Specific job type
+- `?skill=Python` - Jobs requiring Python
+- `?remote_only=true` - Only remote jobs
+- `?min_salary=100000` - Minimum salary
+- `?limit=100` - How many results to return
+- `?offset=100` - Skip first 100 (for pagination)
+
+Combine multiple filters:
+```bash
+curl "http://localhost:8000/jobs?country=US&skill=Python&remote_only=true&min_salary=100000"
+```
+
+### Get Statistics
 
 ```bash
-GET /health
+curl "http://localhost:8000/stats"
+```
 
-Response:
-{
-  "status": "healthy",
-  "checks": {
-    "database": {"status": "healthy", "total_jobs": 12547},
-    "redis": {"status": "healthy"},
-    "scraper": {"status": "healthy", "last_run": "2025-01-15T13:00:00"}
-  }
-}
+Returns overall statistics like total jobs, breakdown by country, top skills, etc.
+
+### Get Top Skills
+
+```bash
+curl "http://localhost:8000/skills?limit=50"
+```
+
+Returns the 50 most in-demand skills across all jobs.
+
+### Check System Health
+
+```bash
+curl "http://localhost:8000/health"
+```
+
+Shows if the database, cache, and scraper are working properly.
+
+### Using API with Authentication
+
+If you enabled API authentication, include your API key:
+
+```bash
+curl -H "X-API-Key: your-api-key-here" "http://localhost:8000/jobs"
 ```
 
 ## Job Categories
 
-The system classifies jobs into 14 categories:
+The system automatically sorts jobs into these categories:
 
-**IT (8 categories):**
-1. Frontend Development - React, Vue, Angular developers
-2. Backend Development - Python, Java, Node.js engineers
-3. Full Stack Development - Full-stack engineers
-4. Cloud & DevOps - Kubernetes, AWS, Azure specialists
-5. Data Engineering - Data pipelines, ETL developers
-6. AI & Machine Learning - ML engineers, data scientists
-7. Security Engineering - Cybersecurity professionals
-8. Mobile Development - iOS, Android developers
+### IT Jobs (8 categories)
 
-**Healthcare (6 categories):**
-9. EHR & EMR Systems - Epic, Cerner developers
-10. Healthcare Interoperability - HL7, FHIR specialists
-11. Telehealth & Digital Health - Telemedicine platforms
-12. Clinical Informatics - Healthcare IT analysts
-13. Healthcare Data & Analytics - Clinical data scientists
-14. Medical Devices & IoT - Medical device software
+1. **Frontend Development** - React, Vue, Angular developers
+2. **Backend Development** - Python, Java, Node.js engineers
+3. **Full Stack Development** - Full-stack engineers
+4. **Cloud & DevOps** - AWS, Azure, Kubernetes specialists
+5. **Data Engineering** - ETL, data pipeline developers
+6. **AI & Machine Learning** - ML engineers, data scientists
+7. **Security Engineering** - Cybersecurity, penetration testers
+8. **Mobile Development** - iOS, Android developers
 
-## How It Works
+### Healthcare Jobs (6 categories)
 
-### 1. Scraping Process
+9. **EHR & EMR Systems** - Epic, Cerner, electronic health records
+10. **Healthcare Interoperability** - HL7, FHIR integration specialists
+11. **Telehealth & Digital Health** - Telemedicine platforms
+12. **Clinical Informatics** - Healthcare IT analysts
+13. **Healthcare Data & Analytics** - Clinical data analysis
+14. **Medical Devices & IoT** - Medical device software
 
-The system uses Playwright to scrape Google Jobs:
-- Searches for configured job titles in specified countries
-- Extracts job details (title, company, description, salary, etc.)
-- Applies rate limiting to avoid getting blocked (2-5 second delays)
-- Rotates user agents to appear as different browsers
+## How Classification Works
 
-### 2. Data Processing
+When a job is collected, the system:
 
-For each job found:
-- **Validation**: Checks for required fields, minimum description length, spam indicators
-- **Skills Extraction**: Matches 500+ skills from the description using pattern matching
-- **Classification**: Assigns primary and secondary categories based on keywords
-- **Deduplication**: Compares with existing jobs using fuzzy matching (85% similarity)
-- **Storage**: Saves to PostgreSQL with all metadata
+1. **Extracts Skills** - Scans the job description for 500+ known skills
+2. **Calculates Category Scores** - Matches keywords to job categories
+3. **Assigns Primary Category** - The best matching category
+4. **Finds Secondary Categories** - Other relevant categories
+5. **Generates Confidence Score** - How sure the system is (0% to 100%)
 
-### 3. Classification System
+For example, a "Full Stack React Developer" job might be:
+- Primary: Frontend Development (90% confidence)
+- Secondary: Full Stack Development (75% confidence)
+- Skills: React, JavaScript, Node.js, PostgreSQL
 
-Jobs are classified using weighted keyword scoring:
-- Exact title matches get highest weight (10.0)
-- Industry keywords weighted 4.0-9.0
-- Title mentions get 1.5x boost
-- Calculates primary category (highest score)
-- Finds secondary categories (30%+ of primary score)
-- Generates confidence score (0.0 to 1.0)
+## How Deduplication Works
 
-### 4. Deduplication
+The same job often appears on multiple sites (LinkedIn, Indeed, Glassdoor). The system:
 
-The system merges duplicate jobs by:
-- Comparing title, company, and location
-- Using fuzzy string matching (handles word order variations)
-- Merging if 85%+ similar
-- Combining skills from all sources
-- Tracking all platforms where the job was found
+1. Compares new jobs with existing ones
+2. Checks if title, company, and location are similar (85%+ match)
+3. Merges duplicates into one entry
+4. Tracks all sources where it was found
+5. Combines skills from all versions
+
+This prevents seeing the same job multiple times.
 
 ## Database Schema
 
-The main `jobs` table includes:
+Jobs are stored with this information:
 
-**Basic Info:**
-- `title`, `company`, `location`, `country`, `city`
-- `description`, `remote` (boolean)
+**Basic Details:**
+- Job title, company name, location, country, city
+- Full job description
+- Whether it's remote or on-site
 
 **Classification:**
-- `industry` (IT or Healthcare)
-- `primary_category` (one of 14 categories)
-- `secondary_categories` (array of related categories)
-- `classification_confidence` (0.0 to 1.0)
+- Industry (IT or Healthcare)
+- Primary category (one of 14)
+- Secondary categories (related categories)
+- Confidence score
 
 **Skills:**
-- `skills_required` (array)
-- `skills_preferred` (array)
-- `all_skills` (combined array)
+- Required skills (must have)
+- Preferred skills (nice to have)
+- All skills combined
 
 **Salary:**
-- `salary_min`, `salary_max`, `salary_currency`
+- Minimum salary
+- Maximum salary
+- Currency (USD, CAD, INR, AUD)
 
 **Status:**
-- `status` (active, removed, expired, checking)
-- `status_last_checked` (last HTTP check timestamp)
-- `is_active` (boolean)
+- Is the job still active?
+- When was it last checked?
+- Current status (active, removed, expired)
 
 **Metadata:**
-- `source_platform` (LinkedIn, Indeed, etc.)
-- `source_url` (link to original posting)
-- `dedup_sources` (array of all platforms)
-- `dedup_count` (number of duplicates found)
-- `created_at`, `scraped_date`, `last_updated`
+- Where it was found (LinkedIn, Indeed, etc.)
+- Link to original posting
+- All sources if it's a duplicate
+- When it was scraped and last updated
 
 ## Maintenance
 
 ### Database Backups
 
-Backups are automatically created daily if using Docker:
-- Location: `./backups/`
-- Retention: 7 days, 4 weeks, 3 months
-- Format: Compressed SQL dumps
+If you're using Docker, backups happen automatically every day:
+- Saved to: `./backups/` folder
+- Keeps: 7 daily, 4 weekly, 3 monthly backups
+- Format: Compressed SQL files
 
 To restore a backup:
 ```bash
@@ -368,304 +405,331 @@ cat backups/daily/jobs_db-2025-01-15.sql.gz | gunzip | \
   docker-compose exec -T postgres psql -U jobscraper jobs_db
 ```
 
-### Database Migrations
+### Checking if Jobs Are Still Active
 
-When the database schema changes, apply migrations:
-```bash
-# See current version
-alembic current
+The system automatically checks if job postings are still available:
+- Runs once a day at 2 AM
+- Visits each job URL to see if it still exists
+- Marks removed jobs as inactive
 
-# Apply all pending migrations
-alembic upgrade head
-
-# Rollback one migration
-alembic downgrade -1
-```
-
-### Cache Management
-
-Redis cache is automatically managed, but you can:
-```bash
-# Clear all cache
-docker-compose exec redis redis-cli FLUSHALL
-
-# Clear versioned cache only
-docker-compose exec redis redis-cli KEYS "v2:*" | xargs redis-cli DEL
-```
-
-### Checking Job Status
-
-The system automatically checks if jobs are still active:
-- Runs daily at 2 AM
-- Sends HTTP HEAD request to job URL
-- Marks as "removed" if 404 or 410 response
-- Keeps jobs with 5xx errors (temporary server issues)
-
-To run manually:
+To run this check manually:
 ```bash
 python -c "from utils.job_status_checker import get_status_checker; get_status_checker().check_jobs()"
 ```
 
-## Testing
+### Clearing the Cache
 
-Run the test suite:
+Sometimes you might want to clear cached data:
+
+```bash
+# Clear everything
+docker-compose exec redis redis-cli FLUSHALL
+
+# Clear only v2 cache (current version)
+docker-compose exec redis redis-cli KEYS "v2:*" | xargs redis-cli DEL
+```
+
+### Database Updates
+
+When the database structure changes, you need to run migrations:
+
+```bash
+# Check current database version
+alembic current
+
+# Update to latest version
+alembic upgrade head
+
+# Undo last update
+alembic downgrade -1
+```
+
+## Running Tests
+
+The system includes automated tests to make sure everything works:
+
 ```bash
 # Run all tests
 pytest
 
-# Run with coverage report
+# See detailed output
+pytest -v
+
+# Check code coverage
 pytest --cov
 
 # Run specific test file
 pytest tests/test_classifier.py
-
-# Run with verbose output
-pytest -v
 ```
 
-Test coverage:
-- 51 tests across 4 test files
-- 85%+ coverage on critical components
+There are 51 tests covering:
+- Job classification
+- Duplicate detection
+- Data validation
+- Authentication
 
-## Troubleshooting
+## Common Problems
 
-### Scraper Not Finding Jobs
+### Problem: Scraper Isn't Finding Jobs
 
-**Problem**: No jobs returned from scraping
-**Solution**:
-- Google may have changed their HTML structure
-- Check `scrapers/playwright_scraper.py` CSS selectors
-- Run with `headless=False` to see what's happening
-- Check logs in `logs/` directory
+**Possible Causes:**
+- Google changed their website layout
+- Rate limiting (you're scraping too fast)
+- Network connectivity issues
 
-### Database Connection Failed
+**Solutions:**
+- Check the logs in `logs/` folder
+- Try running with visible browser: set `HEADLESS_BROWSER=false` in `.env`
+- Increase the delay between requests: set `RATE_LIMIT_DELAY_MIN=5`
 
-**Problem**: Can't connect to PostgreSQL
-**Solution**:
-- Check PostgreSQL is running: `docker-compose ps` or `systemctl status postgresql`
-- Verify credentials in `.env` file
-- Check `DATABASE_URL` environment variable
-- Look for errors in logs
+### Problem: Can't Connect to Database
 
-### Redis Connection Failed
+**Possible Causes:**
+- PostgreSQL isn't running
+- Wrong credentials in `.env` file
+- Database hasn't been created
 
-**Problem**: Cache not working
-**Solution**:
-- Check Redis is running: `docker-compose ps` or `redis-cli ping`
-- System will work without Redis, just slower
-- Check `REDIS_URL` in `.env` file
+**Solutions:**
+- Check if PostgreSQL is running: `docker-compose ps` or `sudo systemctl status postgresql`
+- Verify username and password in `.env` match your PostgreSQL setup
+- Make sure you ran the init.sql file
 
-### Dashboard Won't Load
+### Problem: Dashboard Won't Load
 
-**Problem**: Streamlit dashboard not accessible
-**Solution**:
-- Check if port 8501 is already in use
+**Possible Causes:**
+- Port 8501 is already in use
+- Firewall blocking the port
+- Wrong credentials
+
+**Solutions:**
 - Try a different port: `streamlit run dashboard/app.py --server.port 8502`
 - Check firewall settings
-- Look for errors when starting: `python main.py --dashboard`
+- Verify username/password in `.env` file
+- Look at error messages when starting
 
-### API Authentication Failing
+### Problem: API Returns 401 or 403 Error
 
-**Problem**: Getting 401 or 403 errors
-**Solution**:
-- Check `API_AUTH_ENABLED` in `.env`
-- Verify `API_KEY` is set correctly
-- Include `X-API-Key` header in requests
-- Try with auth disabled first: `API_AUTH_ENABLED=false`
+**Possible Causes:**
+- Authentication is enabled but you didn't provide an API key
+- Wrong API key
+- API key not in the header
 
-### Out of Memory
+**Solutions:**
+- Check if `API_AUTH_ENABLED=true` in `.env`
+- Get your API key from `.env` file
+- Include it in requests: `curl -H "X-API-Key: your-key" http://localhost:8000/jobs`
+- Temporarily disable auth to test: `API_AUTH_ENABLED=false`
 
-**Problem**: System crashes or becomes slow
-**Solution**:
-- Reduce `MAX_JOBS_PER_SEARCH` in `.env`
-- Increase swap space
+### Problem: Running Out of Memory
+
+**Possible Causes:**
+- Scraping too many jobs at once
+- Not enough RAM
+
+**Solutions:**
+- Reduce `MAX_JOBS_PER_SEARCH` in `.env` (try 25 instead of 50)
 - Run components separately instead of all together
-- Check PostgreSQL and Redis memory limits
+- Add more swap space
+- Increase RAM if on a cloud server
+
+### Problem: Seeing Duplicate Jobs
+
+**Possible Causes:**
+- Deduplication threshold too strict
+- Different job IDs from different sources
+
+**Solutions:**
+- Lower `FUZZY_MATCH_THRESHOLD` in `.env` (try 80 instead of 85)
+- This is somewhat expected - same job on LinkedIn and Indeed might not match perfectly
+- Review logs to see why specific jobs weren't merged
 
 ## Performance Tips
 
-**For Faster Scraping:**
-- Run multiple scrapers in parallel (different job titles)
-- Increase scraper concurrency (edit `playwright_scraper.py`)
-- Use faster network connection
+### Make Scraping Faster
 
-**For Better API Performance:**
-- Keep Redis running for caching
-- Add database indexes for your common queries
-- Use pagination (limit results)
+- Run multiple scrapers in parallel for different job titles
+- Use a faster internet connection
+- Increase scraper concurrency in `playwright_scraper.py`
+
+### Make API Faster
+
+- Keep Redis running (it caches results)
+- Use smaller `limit` values (like 50 instead of 1000)
 - Enable API authentication to prevent abuse
 
-**For Lower Resource Usage:**
-- Increase `SCRAPE_INTERVAL_HOURS` (scrape less often)
-- Reduce `MAX_JOBS_PER_SEARCH`
-- Disable features you don't need
-- Run scrapers on separate machines
+### Reduce Resource Usage
+
+- Scrape less frequently: set `SCRAPE_INTERVAL_HOURS=6` instead of 2
+- Reduce jobs per search: set `MAX_JOBS_PER_SEARCH=25`
+- Disable job status checking if you don't need it
+- Run scraper on a separate machine
 
 ## Project Structure
 
 ```
 Scraping/
-├── api/                    # FastAPI REST API
-│   └── main.py            # API endpoints
-├── dashboard/             # Streamlit web dashboard
-│   └── app.py            # Dashboard UI
-├── models/                # Database models
-│   └── database.py       # SQLAlchemy models
-├── processors/            # Data processing
-│   ├── job_classifier.py # Multi-label classification
-│   ├── deduplication.py  # Fuzzy matching
-│   └── skills_extractor.py # Skill extraction
-├── scrapers/              # Web scrapers
-│   ├── playwright_scraper.py  # Modern async scraper
-│   └── google_jobs_scraper.py # Legacy scraper
-├── utils/                 # Utilities
-│   ├── auth.py           # Authentication helpers
-│   ├── cache.py          # Redis caching
-│   ├── validation.py     # Data validation
-│   ├── notifications.py  # Error notifications
-│   ├── config_loader.py  # Config management
-│   └── job_status_checker.py # Job validation
-├── tests/                 # Test suite
-│   ├── test_classifier.py
-│   ├── test_deduplication.py
-│   ├── test_validation.py
-│   └── test_auth.py
-├── config/                # Configuration files
-│   ├── job_categories.json  # 14 categories, 232 titles
-│   ├── skills_database.json # 500+ skills
-│   └── countries.json       # 4 countries
+├── api/                     # REST API
+│   └── main.py             # API routes and logic
+├── dashboard/              # Web interface
+│   └── app.py             # Dashboard UI
+├── models/                 # Database
+│   └── database.py        # Table definitions
+├── processors/             # Data processing
+│   ├── job_classifier.py  # Categorizes jobs
+│   ├── deduplication.py   # Finds duplicates
+│   └── skills_extractor.py # Extracts skills
+├── scrapers/               # Web scrapers
+│   ├── playwright_scraper.py  # Main scraper
+│   └── google_jobs_scraper.py # Backup scraper
+├── utils/                  # Helper functions
+│   ├── auth.py            # Password hashing
+│   ├── cache.py           # Redis caching
+│   ├── validation.py      # Data validation
+│   └── job_status_checker.py # Checks if jobs exist
+├── tests/                  # Automated tests
+├── config/                 # Settings files
+│   ├── job_categories.json    # 14 categories, 232 job titles
+│   ├── skills_database.json   # 500+ skills
+│   └── countries.json         # Supported countries
 ├── alembic/               # Database migrations
-├── logs/                  # Application logs
+├── logs/                  # Log files
 ├── backups/               # Database backups
-├── main.py               # CLI entry point
+├── main.py               # Main entry point
 ├── scheduler.py          # Automated scheduling
 ├── docker-compose.yml    # Docker setup
-└── requirements.txt      # Python dependencies
+└── requirements.txt      # Python packages
 ```
 
 ## Configuration Files
 
 ### job_categories.json
 
-Defines the 14 job categories and 232 job titles to search for. Edit this file to:
-- Add new job titles to search
-- Create new categories
-- Modify industry classifications
+This file defines what jobs to search for and how to categorize them. It contains:
+- 14 job categories
+- 232 specific job titles to search for
+- Keywords used for automatic classification
+
+Edit this if you want to:
+- Search for different types of jobs
+- Add new categories
+- Change how jobs are classified
 
 ### skills_database.json
 
-Contains 500+ technical skills across 15 categories:
-- Programming languages
-- Frontend/backend frameworks
-- Databases and cloud platforms
-- DevOps tools
-- Healthcare-specific technologies
+Contains 500+ technical skills organized into categories:
+- Programming languages (Python, Java, JavaScript, etc.)
+- Frameworks (React, Django, Spring, etc.)
+- Databases (PostgreSQL, MongoDB, MySQL, etc.)
+- Cloud platforms (AWS, Azure, Google Cloud)
+- DevOps tools (Docker, Kubernetes, Jenkins, etc.)
+- Healthcare technologies (Epic, Cerner, HL7, FHIR, etc.)
+
+Edit this to add new skills to recognize.
 
 ### countries.json
 
-Defines supported countries and cities. Currently includes:
-- United States (10 major cities)
-- Canada (6 major cities)
-- India (7 major cities)
-- Australia (6 major cities)
+Lists countries and cities to search in:
+- **United States**: New York, San Francisco, Austin, Seattle, Boston, Chicago, Los Angeles, Denver, Miami, Atlanta
+- **Canada**: Toronto, Vancouver, Montreal, Calgary, Ottawa, Edmonton
+- **India**: Bangalore, Hyderabad, Mumbai, Pune, Delhi, Chennai, Kolkata
+- **Australia**: Sydney, Melbourne, Brisbane, Perth, Adelaide, Canberra
 
-## Environment Variables
+Edit this to add new countries or cities.
 
-**Database:**
-- `POSTGRES_HOST` - Database server (default: localhost)
-- `POSTGRES_PORT` - Database port (default: 5432)
+## Environment Variables Reference
+
+Here's every setting you can configure in the `.env` file:
+
+### Database Settings
+- `POSTGRES_HOST` - Where PostgreSQL is (default: localhost)
+- `POSTGRES_PORT` - PostgreSQL port (default: 5432)
 - `POSTGRES_DB` - Database name (default: jobs_db)
-- `POSTGRES_USER` - Database username
-- `POSTGRES_PASSWORD` - Database password
-- `DATABASE_URL` - Full connection string (overrides above)
+- `POSTGRES_USER` - Username for database
+- `POSTGRES_PASSWORD` - Password for database
+- `DATABASE_URL` - Full connection string (alternative to above settings)
 
-**Redis:**
-- `REDIS_HOST` - Redis server (default: localhost)
+### Cache Settings
+- `REDIS_HOST` - Where Redis is (default: localhost)
 - `REDIS_PORT` - Redis port (default: 6379)
-- `REDIS_URL` - Full connection string (overrides above)
-- `CACHE_TTL_STATS` - Stats cache duration in seconds (default: 300)
-- `CACHE_TTL_SKILLS` - Skills cache duration in seconds (default: 3600)
+- `REDIS_URL` - Full connection string (alternative to above)
+- `CACHE_TTL_STATS` - How long to cache statistics in seconds (default: 300)
+- `CACHE_TTL_SKILLS` - How long to cache skills in seconds (default: 3600)
 
-**Scraping:**
+### Scraping Settings
 - `SCRAPE_INTERVAL_HOURS` - Hours between scraping runs (default: 2)
-- `MAX_JOBS_PER_SEARCH` - Max jobs per search query (default: 50)
-- `HEADLESS_BROWSER` - Run browser in headless mode (default: true)
-- `RATE_LIMIT_DELAY_MIN` - Min delay between requests in seconds (default: 2)
-- `RATE_LIMIT_DELAY_MAX` - Max delay between requests in seconds (default: 5)
+- `MAX_JOBS_PER_SEARCH` - Maximum jobs per search (default: 50)
+- `HEADLESS_BROWSER` - Run browser invisibly (default: true)
+- `RATE_LIMIT_DELAY_MIN` - Minimum seconds between requests (default: 2)
+- `RATE_LIMIT_DELAY_MAX` - Maximum seconds between requests (default: 5)
 
-**Job Status Checking:**
-- `CHECK_JOB_STATUS` - Enable job validation (default: true)
+### Job Checking Settings
+- `CHECK_JOB_STATUS` - Check if jobs still exist (default: true)
 - `STATUS_CHECK_INTERVAL_DAYS` - Days between checks (default: 7)
-- `STATUS_CHECK_BATCH_SIZE` - Jobs per batch (default: 50)
-- `MAX_CONCURRENT_CHECKS` - Parallel HTTP requests (default: 5)
+- `STATUS_CHECK_BATCH_SIZE` - How many to check at once (default: 50)
+- `MAX_CONCURRENT_CHECKS` - Parallel checks (default: 5)
 
-**Validation:**
-- `FUZZY_MATCH_THRESHOLD` - Similarity for duplicates 0-100 (default: 85)
-- `MIN_DESCRIPTION_LENGTH` - Minimum description chars (default: 50)
+### Validation Settings
+- `FUZZY_MATCH_THRESHOLD` - Similarity % for duplicates (default: 85)
+- `MIN_DESCRIPTION_LENGTH` - Minimum description length (default: 50)
 - `LOG_VALIDATION_FAILURES` - Log rejected jobs (default: true)
 
-**API:**
-- `API_HOST` - API server host (default: 0.0.0.0)
-- `API_PORT` - API server port (default: 8000)
+### API Settings
+- `API_HOST` - API host (default: 0.0.0.0)
+- `API_PORT` - API port (default: 8000)
 - `API_AUTH_ENABLED` - Require API key (default: false)
-- `API_KEY` - API authentication key
+- `API_KEY` - Your API key if auth enabled
 
-**Dashboard:**
+### Dashboard Settings
 - `DASHBOARD_PORT` - Dashboard port (default: 8501)
 - `DASHBOARD_AUTH_ENABLED` - Require login (default: true)
 - `DASHBOARD_USERNAME` - Login username (default: admin)
-- `DASHBOARD_PASSWORD` - Plain password (not recommended)
+- `DASHBOARD_PASSWORD` - Plaintext password (not recommended)
 - `DASHBOARD_PASSWORD_HASH` - Hashed password (recommended)
+- `DASHBOARD_PASSWORD_SALT` - Salt for hashed password
 
-**Logging:**
-- `LOG_LEVEL` - Logging level (default: INFO)
-- `LOG_TO_FILE` - Enable file logging (default: true)
-- `LOG_RETENTION` - Keep logs for duration (default: 30 days)
+### Logging Settings
+- `LOG_LEVEL` - How much to log (DEBUG, INFO, WARNING, ERROR)
+- `LOG_TO_FILE` - Save logs to files (default: true)
+- `LOG_RETENTION` - Keep logs for how long (default: 30 days)
 
-## Security Considerations
+## Security Checklist
 
-**For Production Deployments:**
+If you're running this on a server accessible from the internet:
 
-1. **Change Default Passwords**: Never use default credentials
-2. **Use Password Hashing**: Set `DASHBOARD_PASSWORD_HASH` instead of plaintext
-3. **Enable API Authentication**: Set `API_AUTH_ENABLED=true`
-4. **Use Strong API Keys**: Generate random 64-character keys
-5. **Enable HTTPS**: Use reverse proxy (Nginx) with SSL certificates
-6. **Restrict Database Access**: Don't expose PostgreSQL port publicly
-7. **Keep Dependencies Updated**: Regularly run `pip install --upgrade`
-8. **Monitor Logs**: Check `logs/` directory for suspicious activity
-9. **Backup Regularly**: Verify backups are working
-10. **Use Firewall**: Only allow necessary ports
+1. **Change All Default Passwords** - Don't use "changeme123" or "changeme456"
+2. **Use Hashed Passwords** - Set `DASHBOARD_PASSWORD_HASH` not `DASHBOARD_PASSWORD`
+3. **Enable API Authentication** - Set `API_AUTH_ENABLED=true`
+4. **Use Strong API Keys** - Generate random 64+ character keys
+5. **Set Up HTTPS** - Use a reverse proxy like Nginx with SSL certificates
+6. **Don't Expose Database** - Keep PostgreSQL port 5432 closed to the internet
+7. **Update Regularly** - Run `pip install --upgrade` to update packages
+8. **Monitor Logs** - Check `logs/` folder regularly for suspicious activity
+9. **Test Backups** - Make sure you can restore from your backups
+10. **Use a Firewall** - Only allow necessary ports (80, 443)
+
+## What's New
+
+Recent improvements (see `IMPROVEMENTS.md` for details):
+
+- Password hashing with SHA-256 for secure authentication
+- API key authentication to control access
+- 51 automated tests for reliability
+- SQL injection prevention
+- Versioned caching system
+- Detailed pagination in API responses
+- Comprehensive health monitoring
+- Automatic daily database backups
+
+## Getting Help
+
+If something isn't working:
+
+1. Check the "Common Problems" section above
+2. Look at log files in the `logs/` folder
+3. Read `IMPROVEMENTS.md` for recent changes
+4. Check test files in `tests/` for usage examples
+5. Try running with debugging: `LOG_LEVEL=DEBUG` in `.env`
 
 ## License
 
-This project is provided as-is for educational and commercial use.
-
-## Support
-
-For issues and questions:
-- Check the Troubleshooting section above
-- Review logs in the `logs/` directory
-- Check `IMPROVEMENTS.md` for recent changes
-- Review test files in `tests/` for usage examples
-
-## Recent Updates
-
-See `IMPROVEMENTS.md` for a complete list of recent improvements including:
-- Security enhancements (password hashing, API authentication)
-- Database migrations with Alembic
-- Comprehensive test suite (51 tests)
-- SQL injection fixes
-- Cache versioning system
-- API pagination metadata
-- Enhanced health checks
-- Automated backups
-
-## Contributing
-
-When making changes:
-1. Run tests: `pytest`
-2. Check code style: `black .` and `flake8`
-3. Create database migration if needed: `alembic revision --autogenerate -m "description"`
-4. Update relevant documentation
-5. Test with both Docker and manual setup
+Free to use for any purpose.
