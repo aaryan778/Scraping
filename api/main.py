@@ -4,12 +4,14 @@ Provides endpoints to query and export job data
 
 Phase 5: Added Redis caching and multi-label classification support
 """
-from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi import FastAPI, Depends, HTTPException, Query, Security
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import APIKeyHeader
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 from typing import List, Optional
 import sys
+import os
 from pathlib import Path
 from datetime import datetime, timedelta
 import json
@@ -23,6 +25,51 @@ from loguru import logger
 
 # Initialize Redis cache
 cache = RedisCache()
+
+# API Key security
+API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+def verify_api_key(api_key: str = Security(API_KEY_HEADER)) -> str:
+    """
+    Verify API key from request header
+
+    Args:
+        api_key: API key from X-API-Key header
+
+    Returns:
+        API key if valid
+
+    Raises:
+        HTTPException: If API key is invalid or missing
+    """
+    # Check if API authentication is enabled
+    api_auth_enabled = os.getenv('API_AUTH_ENABLED', 'false').lower() == 'true'
+
+    if not api_auth_enabled:
+        return "auth_disabled"
+
+    # Get the correct API key from environment
+    correct_api_key = os.getenv('API_KEY')
+
+    if not correct_api_key:
+        # No API key configured, allow access with warning
+        logger.warning("API_KEY not configured but API_AUTH_ENABLED=true")
+        return "no_key_configured"
+
+    if not api_key:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing API Key. Include X-API-Key header in your request."
+        )
+
+    if api_key != correct_api_key:
+        raise HTTPException(
+            status_code=403,
+            detail="Invalid API Key"
+        )
+
+    return api_key
 
 
 def get_db():
@@ -93,6 +140,7 @@ async def get_jobs(
     remote_only: bool = Query(False, description="Show only remote jobs"),
     limit: int = Query(100, le=1000, description="Maximum number of results"),
     offset: int = Query(0, description="Offset for pagination"),
+    api_key: str = Depends(verify_api_key),
     db: Session = Depends(get_db)
 ):
     """Get jobs with optional filtering (multi-label classification support)"""
@@ -128,8 +176,12 @@ async def get_jobs(
     return [job.to_dict() if hasattr(job, 'to_dict') else job.__dict__ for job in jobs]
 
 
-@app.get("/jobs/{job_id}", response_model=JobResponse)
-async def get_job(job_id: str, db: Session = Depends(get_db)):
+@app.get("/jobs/{job_id}")
+async def get_job(
+    job_id: str,
+    api_key: str = Depends(verify_api_key),
+    db: Session = Depends(get_db)
+):
     """Get a specific job by ID"""
     job = db.query(Job).filter(Job.job_id == job_id).first()
 
@@ -140,7 +192,10 @@ async def get_job(job_id: str, db: Session = Depends(get_db)):
 
 
 @app.get("/stats")
-async def get_stats(db: Session = Depends(get_db)):
+async def get_stats(
+    api_key: str = Depends(verify_api_key),
+    db: Session = Depends(get_db)
+):
     """Get statistics about scraped jobs (with Redis caching)"""
     # Try to get from cache first
     cache_key = CacheKeys.stats_key()

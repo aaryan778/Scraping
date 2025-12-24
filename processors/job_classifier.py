@@ -286,6 +286,33 @@ class JobClassifier:
 
         return categories
 
+    def get_all_job_titles(self, industry: str = None) -> List[str]:
+        """
+        Get all job titles from categories
+
+        Args:
+            industry: Optional industry filter (e.g., 'IT', 'Healthcare')
+
+        Returns:
+            List of all job titles
+        """
+        titles = []
+
+        if industry:
+            # Get categories for specific industry
+            industry_categories = self.categories.get(industry, {})
+            for category_titles in industry_categories.values():
+                if isinstance(category_titles, list):
+                    titles.extend(category_titles)
+        else:
+            # Get all titles from all industries
+            for industry_categories in self.categories.values():
+                for category_titles in industry_categories.values():
+                    if isinstance(category_titles, list):
+                        titles.extend(category_titles)
+
+        return titles
+
     def validate_category(self, category: str, industry: str = None) -> bool:
         """
         Check if a category is valid

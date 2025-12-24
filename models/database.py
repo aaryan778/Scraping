@@ -87,6 +87,7 @@ class Job(Base):
     status_check_error = Column(Text, nullable=True)  # Error message if check failed
 
     # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, index=True, nullable=False)
     posted_date = Column(DateTime, nullable=True, index=True)
     scraped_date = Column(DateTime, default=datetime.utcnow, index=True)
     last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -141,6 +142,7 @@ class Job(Base):
             "status_last_checked": self.status_last_checked.isoformat() if self.status_last_checked else None,
             "is_active": self.is_active,
             # Timestamps
+            "created_at": self.created_at.isoformat() if self.created_at else None,
             "posted_date": self.posted_date.isoformat() if self.posted_date else None,
             "scraped_date": self.scraped_date.isoformat() if self.scraped_date else None,
             "last_updated": self.last_updated.isoformat() if self.last_updated else None,

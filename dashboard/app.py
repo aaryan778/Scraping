@@ -18,6 +18,7 @@ from sqlalchemy import func
 sys.path.append(str(Path(__file__).parent.parent))
 
 from models.database import Job, ScrapingLog, SessionLocal
+from utils.auth import verify_password_hash
 
 # Page config
 st.set_page_config(
@@ -86,9 +87,18 @@ def check_authentication():
         if submit:
             # Get credentials from env
             correct_username = os.getenv('DASHBOARD_USERNAME', 'admin')
-            correct_password = os.getenv('DASHBOARD_PASSWORD', 'changeme456')
+            password_hash = os.getenv('DASHBOARD_PASSWORD_HASH')
 
-            if username == correct_username and password == correct_password:
+            # Support both hashed and legacy plaintext passwords
+            if password_hash:
+                # Secure: Use hashed password
+                password_valid = verify_password_hash(password, password_hash)
+            else:
+                # Legacy: Fallback to plaintext (not recommended)
+                correct_password = os.getenv('DASHBOARD_PASSWORD', 'changeme456')
+                password_valid = password == correct_password
+
+            if username == correct_username and password_valid:
                 st.session_state.authenticated = True
                 st.success("✅ Login successful!")
                 st.rerun()
