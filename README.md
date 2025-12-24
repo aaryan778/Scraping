@@ -25,6 +25,97 @@ This system:
 - REST API for custom integrations
 - Automatic daily backups of your data
 
+## Architecture
+
+Here's how the system works:
+
+```mermaid
+flowchart TB
+    subgraph External["External Job Sites"]
+        Google["Google Jobs"]
+        LinkedIn["LinkedIn"]
+        Indeed["Indeed"]
+        Glassdoor["Glassdoor"]
+    end
+
+    subgraph Scraping["Scraping Layer"]
+        Playwright["Playwright Scraper<br/>(Browser Automation)"]
+        RateLimit["Rate Limiter<br/>(2-5 sec delays)"]
+    end
+
+    subgraph Processing["Processing Layer"]
+        Validator["Data Validator<br/>(Spam Filter)"]
+        Classifier["Job Classifier<br/>(14 Categories)"]
+        Skills["Skills Extractor<br/>(500+ Skills)"]
+        Dedup["Deduplication<br/>(85% Fuzzy Match)"]
+    end
+
+    subgraph Storage["Storage Layer"]
+        Postgres[(PostgreSQL<br/>Job Database)]
+        Redis[(Redis Cache<br/>5-60 min TTL)]
+        Backup[("Daily Backups<br/>(7d/4w/3m)")]
+    end
+
+    subgraph Interface["User Interface"]
+        API["REST API<br/>(Port 8000)"]
+        Dashboard["Web Dashboard<br/>(Port 8501)"]
+    end
+
+    subgraph Automation["Automation"]
+        Scheduler["Scheduler<br/>(Every 2 hours)"]
+        StatusChecker["Job Status Checker<br/>(Daily @ 2 AM)"]
+    end
+
+    Google -.->|aggregates| LinkedIn
+    Google -.->|aggregates| Indeed
+    Google -.->|aggregates| Glassdoor
+
+    Scheduler -->|triggers| Playwright
+    Playwright -->|scrapes| Google
+    Playwright --> RateLimit
+    RateLimit --> Validator
+
+    Validator -->|valid jobs| Classifier
+    Classifier --> Skills
+    Skills --> Dedup
+
+    Dedup -->|checks duplicates| Postgres
+    Dedup -->|saves| Postgres
+
+    StatusChecker -->|checks URLs| Postgres
+    StatusChecker -->|updates status| Postgres
+
+    Postgres -->|caches| Redis
+    Postgres -->|backup| Backup
+
+    API -->|reads| Redis
+    API -->|reads| Postgres
+    Dashboard -->|reads| Redis
+    Dashboard -->|reads| Postgres
+
+    style External fill:#f9f,stroke:#333,stroke-width:2px
+    style Scraping fill:#bbf,stroke:#333,stroke-width:2px
+    style Processing fill:#bfb,stroke:#333,stroke-width:2px
+    style Storage fill:#fbb,stroke:#333,stroke-width:2px
+    style Interface fill:#ffb,stroke:#333,stroke-width:2px
+    style Automation fill:#bff,stroke:#333,stroke-width:2px
+```
+
+### How Data Flows
+
+1. **Scheduler** triggers scraping every 2 hours
+2. **Playwright** opens a browser and scrapes Google Jobs (which aggregates LinkedIn, Indeed, Glassdoor)
+3. **Rate Limiter** adds delays to avoid getting blocked
+4. **Validator** filters out spam and incomplete jobs
+5. **Classifier** assigns jobs to categories (Frontend, Backend, Healthcare, etc.)
+6. **Skills Extractor** finds technical skills in job descriptions
+7. **Deduplication** checks if the job already exists in the database
+8. **PostgreSQL** stores all job data
+9. **Redis** caches frequently accessed data (stats, skills lists)
+10. **API & Dashboard** let users access the data
+11. **Status Checker** verifies jobs are still active daily
+12. **Backup Service** creates daily database backups
+
 ## Requirements
 
 You'll need:
