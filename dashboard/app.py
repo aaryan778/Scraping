@@ -1,6 +1,8 @@
 """
 Streamlit Dashboard for Job Scraping System
 Interactive dashboard to visualize and export job data
+
+Phase 5: Added basic authentication and multi-label classification support
 """
 import streamlit as st
 import pandas as pd
@@ -8,13 +10,14 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import sys
+import os
 from pathlib import Path
 from sqlalchemy import func
 
 # Add parent directory to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from models import Job, ScrapingLog, SessionLocal
+from models.database import Job, ScrapingLog, SessionLocal
 
 # Page config
 st.set_page_config(
@@ -47,6 +50,58 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+def check_authentication():
+    """
+    Check if user is authenticated
+
+    Returns:
+        bool: True if authenticated, False otherwise
+    """
+    # Get credentials from environment variables
+    auth_enabled = os.getenv('DASHBOARD_AUTH_ENABLED', 'true').lower() == 'true'
+
+    # If auth is disabled, allow access
+    if not auth_enabled:
+        return True
+
+    # Initialize session state
+    if 'authenticated' not in st.session_state:
+        st.session_state.authenticated = False
+
+    # If already authenticated, return True
+    if st.session_state.authenticated:
+        return True
+
+    # Show login form
+    st.markdown('<div class="main-header">🔐 Login Required</div>', unsafe_allow_html=True)
+
+    with st.form("login_form"):
+        st.markdown("### Please enter your credentials")
+
+        username = st.text_input("Username", key="username_input")
+        password = st.text_input("Password", type="password", key="password_input")
+
+        submit = st.form_submit_button("Login", use_container_width=True)
+
+        if submit:
+            # Get credentials from env
+            correct_username = os.getenv('DASHBOARD_USERNAME', 'admin')
+            correct_password = os.getenv('DASHBOARD_PASSWORD', 'changeme456')
+
+            if username == correct_username and password == correct_password:
+                st.session_state.authenticated = True
+                st.success("✅ Login successful!")
+                st.rerun()
+            else:
+                st.error("❌ Invalid username or password")
+
+    st.markdown("---")
+    st.info("💡 **Default credentials:**\n- Username: admin\n- Password: changeme456\n\n"
+            "Change these in your .env file (DASHBOARD_USERNAME and DASHBOARD_PASSWORD)")
+
+    return False
+
+
 @st.cache_resource
 def get_db_session():
     """Get database session"""
@@ -66,7 +121,7 @@ def load_jobs_data():
 
 @st.cache_data(ttl=300)
 def load_stats():
-    """Load statistics"""
+    """Load statistics with multi-label classification support"""
     db = SessionLocal()
     try:
         total_jobs = db.query(func.count(Job.id)).filter(Job.is_active == True).scalar()
@@ -81,10 +136,11 @@ def load_stats():
             func.count(Job.id).label('count')
         ).filter(Job.is_active == True).group_by(Job.industry).all()
 
+        # Use primary_category instead of category
         jobs_by_category = db.query(
-            Job.category,
+            Job.primary_category,
             func.count(Job.id).label('count')
-        ).filter(Job.is_active == True).group_by(Job.category).all()
+        ).filter(Job.is_active == True).group_by(Job.primary_category).all()
 
         return {
             "total_jobs": total_jobs or 0,
@@ -101,10 +157,11 @@ def export_to_excel(df, filename="jobs_export.xlsx"):
     output_path = Path("data/exports") / filename
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Select columns for export
+    # Select columns for export (with multi-label classification)
     export_columns = [
         'title', 'company', 'location', 'country', 'city', 'remote',
-        'category', 'industry', 'experience_level',
+        'industry', 'primary_category', 'secondary_categories',
+        'classification_confidence', 'experience_level',
         'all_skills', 'salary_min', 'salary_max', 'salary_currency',
         'source_platform', 'source_url', 'posted_date', 'scraped_date'
     ]
@@ -120,6 +177,11 @@ def export_to_excel(df, filename="jobs_export.xlsx"):
             lambda x: ', '.join(x) if isinstance(x, list) else ''
         )
 
+    if 'secondary_categories' in export_df.columns:
+        export_df['secondary_categories'] = export_df['secondary_categories'].apply(
+            lambda x: ', '.join(x) if isinstance(x, list) else ''
+        )
+
     # Export to Excel
     export_df.to_excel(output_path, index=False, engine='openpyxl')
 
@@ -128,10 +190,20 @@ def export_to_excel(df, filename="jobs_export.xlsx"):
 
 # Main app
 def main():
+    # Check authentication first
+    if not check_authentication():
+        return
+
     st.markdown('<div class="main-header">💼 Job Scraping Dashboard</div>', unsafe_allow_html=True)
 
-    # Sidebar
+    # Sidebar with logout button
     st.sidebar.title("🔍 Filters")
+
+    # Logout button at the top of sidebar
+    if os.getenv('DASHBOARD_AUTH_ENABLED', 'true').lower() == 'true':
+        if st.sidebar.button("🚪 Logout", use_container_width=True):
+            st.session_state.authenticated = False
+            st.rerun()
 
     # Load data
     try:
@@ -153,8 +225,9 @@ def main():
     industries = ['All'] + sorted(df['industry'].dropna().unique().tolist())
     selected_industry = st.sidebar.selectbox("Industry", industries)
 
-    categories = ['All'] + sorted(df['category'].dropna().unique().tolist())
-    selected_category = st.sidebar.selectbox("Category", categories)
+    # Use primary_category for filtering
+    categories = ['All'] + sorted(df['primary_category'].dropna().unique().tolist())
+    selected_category = st.sidebar.selectbox("Primary Category", categories)
 
     remote_only = st.sidebar.checkbox("Remote Only")
 
@@ -168,7 +241,7 @@ def main():
         filtered_df = filtered_df[filtered_df['industry'] == selected_industry]
 
     if selected_category != 'All':
-        filtered_df = filtered_df[filtered_df['category'] == selected_category]
+        filtered_df = filtered_df[filtered_df['primary_category'] == selected_category]
 
     if remote_only:
         filtered_df = filtered_df[filtered_df['remote'] == True]
@@ -215,15 +288,16 @@ def main():
                 st.plotly_chart(fig, use_container_width=True)
 
         with col2:
-            st.markdown("#### Jobs by Category")
+            st.markdown("#### Jobs by Primary Category")
             if not filtered_df.empty:
-                category_counts = filtered_df['category'].value_counts()
+                category_counts = filtered_df['primary_category'].value_counts()
                 fig = px.bar(
                     x=category_counts.index,
                     y=category_counts.values,
-                    title="Jobs by Category",
-                    labels={'x': 'Category', 'y': 'Number of Jobs'}
+                    title="Jobs by Primary Category",
+                    labels={'x': 'Primary Category', 'y': 'Number of Jobs'}
                 )
+                fig.update_xaxes(tickangle=-45)
                 st.plotly_chart(fig, use_container_width=True)
 
         col3, col4 = st.columns(2)
@@ -327,12 +401,12 @@ def main():
             st.info("No skills data available")
 
         # Skills by category
-        if 'category' in filtered_df.columns and 'all_skills' in filtered_df.columns:
+        if 'primary_category' in filtered_df.columns and 'all_skills' in filtered_df.columns:
             st.markdown("#### Skills by Job Category")
 
             category_skills = {}
             for idx, row in filtered_df.iterrows():
-                cat = row['category']
+                cat = row['primary_category']
                 skills = row['all_skills']
                 if cat and isinstance(skills, list):
                     if cat not in category_skills:
@@ -371,7 +445,18 @@ def main():
                 col1, col2 = st.columns([2, 1])
 
                 with col1:
-                    st.write(f"**Category:** {job.get('category', 'N/A')}")
+                    # Multi-label classification display
+                    primary_cat = job.get('primary_category', 'N/A')
+                    st.write(f"**Primary Category:** {primary_cat}")
+
+                    secondary_cats = job.get('secondary_categories', [])
+                    if isinstance(secondary_cats, list) and secondary_cats:
+                        st.write(f"**Secondary Categories:** {', '.join(secondary_cats)}")
+
+                    confidence = job.get('classification_confidence')
+                    if confidence:
+                        st.write(f"**Classification Confidence:** {confidence:.1%}")
+
                     st.write(f"**Industry:** {job.get('industry', 'N/A')}")
                     st.write(f"**Experience Level:** {job.get('experience_level', 'N/A')}")
                     st.write(f"**Remote:** {'Yes' if job.get('remote') else 'No'}")
